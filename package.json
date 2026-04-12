@@ -1,0 +1,19 @@
+{
+  "name": "hotel-crm",
+  "version": "0.1.0",
+  "description": "Hotel CRM/PMS + AI Chatbot",
+  "scripts": {
+    "dev": "bun --hot src/index.ts",
+    "start": "bun src/index.ts",
+    "test": "bun test",
+    "migrate": "bun src/db/migrate.ts"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.49.0",
+    "hono": "^4.7.0"
+  },
+  "devDependencies": {
+    "bun-types": "latest",
+    "@types/bun": "latest"
+  }
+}
