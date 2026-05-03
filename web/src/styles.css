@@ -1,0 +1,122 @@
+:root {
+  --color-bg: oklch(98% 0.005 250);
+  --color-surface: oklch(100% 0 0);
+  --color-surface-2: oklch(96% 0.005 250);
+  --color-border: oklch(89% 0.01 250);
+  --color-text: oklch(20% 0.02 250);
+  --color-text-soft: oklch(45% 0.02 250);
+  --color-accent: oklch(58% 0.18 260);
+  --color-accent-soft: oklch(95% 0.04 260);
+  --color-success: oklch(62% 0.16 145);
+  --color-warning: oklch(72% 0.16 80);
+  --color-danger: oklch(58% 0.22 25);
+  --color-info: oklch(60% 0.14 230);
+
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 16px;
+
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+  --space-8: 48px;
+
+  --shadow-sm: 0 1px 2px oklch(0% 0 0 / 0.06);
+  --shadow-md: 0 4px 14px oklch(0% 0 0 / 0.08);
+
+  --font-stack: -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui,
+    "Inter", "Segoe UI", Roboto, sans-serif;
+}
+
+* { box-sizing: border-box; }
+
+html, body, #root { margin: 0; height: 100%; }
+
+body {
+  font-family: var(--font-stack);
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-size: 14px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+button { font: inherit; cursor: pointer; }
+
+a { color: var(--color-accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+input, select, textarea { font: inherit; color: inherit; }
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 8px 14px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  color: var(--color-text);
+  font-weight: 500;
+  transition: background 120ms ease, border-color 120ms ease;
+}
+.btn:hover { background: var(--color-surface-2); }
+.btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.btn-primary { background: var(--color-accent); border-color: var(--color-accent); color: white; }
+.btn-primary:hover { background: oklch(50% 0.18 260); }
+
+.btn-danger { background: var(--color-danger); border-color: var(--color-danger); color: white; }
+
+.btn-ghost { background: transparent; border-color: transparent; }
+.btn-ghost:hover { background: var(--color-surface-2); }
+
+.input {
+  width: 100%;
+  padding: 8px 12px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  outline: none;
+  transition: border-color 120ms ease, box-shadow 120ms ease;
+}
+.input:focus { border-color: var(--color-accent); box-shadow: 0 0 0 3px var(--color-accent-soft); }
+
+.card {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+}
+
+.muted { color: var(--color-text-soft); }
+
+.pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 500;
+  background: var(--color-surface-2);
+  color: var(--color-text-soft);
+  border: 1px solid var(--color-border);
+}
+.pill.success { background: oklch(95% 0.06 145); color: oklch(35% 0.14 145); border-color: oklch(85% 0.07 145); }
+.pill.warning { background: oklch(96% 0.07 80);  color: oklch(38% 0.14 80);  border-color: oklch(86% 0.08 80); }
+.pill.danger  { background: oklch(95% 0.05 25);  color: oklch(38% 0.18 25);  border-color: oklch(85% 0.08 25); }
+.pill.info    { background: oklch(95% 0.04 230); color: oklch(38% 0.13 230); border-color: oklch(85% 0.06 230); }
+.pill.neutral { background: var(--color-surface-2); color: var(--color-text-soft); }
+
+.stack { display: flex; flex-direction: column; gap: var(--space-3); }
+.row   { display: flex; align-items: center; gap: var(--space-3); }
+.grid  { display: grid; gap: var(--space-3); }
+.spacer { flex: 1; }
+
+.table { width: 100%; border-collapse: collapse; }
+.table th, .table td { padding: 10px 12px; text-align: left; border-bottom: 1px solid var(--color-border); }
+.table th { font-weight: 600; color: var(--color-text-soft); font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em; }
+.table tbody tr:hover { background: var(--color-surface-2); }

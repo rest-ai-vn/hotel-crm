@@ -8,16 +8,29 @@
     "test": "bun test",
     "migrate": "bun src/db/migrate.ts",
     "seed": "bun src/db/seed.ts",
-    "typecheck": "bunx tsc --noEmit --pretty false"
+    "typecheck": "bunx tsc --noEmit --pretty false",
+    "dev:web": "bunx vite",
+    "build:web": "bunx vite build",
+    "preview:web": "bunx vite preview",
+    "typecheck:web": "bunx tsc --noEmit --pretty false -p web/tsconfig.json"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.49.0",
+    "@tanstack/react-query": "^5.100.8",
     "hono": "^4.7.0",
     "jose": "^6.2.3",
+    "react": "^19.2.5",
+    "react-dom": "^19.2.5",
+    "react-router-dom": "^7.14.2",
     "zod": "^4.4.2"
   },
   "devDependencies": {
+    "@types/bun": "latest",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^6.0.1",
     "bun-types": "latest",
-    "@types/bun": "latest"
+    "typescript": "^6.0.3",
+    "vite": "^8.0.10"
   }
 }
