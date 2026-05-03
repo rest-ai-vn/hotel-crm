@@ -1,18 +1,24 @@
 import { Hono } from "hono";
 import { getServerDb } from "../db/supabase-client";
+import { parseBody } from "../lib/validate";
+import {
+  guestCreateSchema,
+  guestFindOrCreateSchema,
+  guestUpdateSchema,
+} from "../lib/schemas";
 
 const guests = new Hono();
 
-// List guests (search by name, phone, zalo_id)
 guests.get("/", async (c) => {
   const db = getServerDb();
   const search = c.req.query("q");
-  const limit = Number(c.req.query("limit") || 50);
-  const offset = Number(c.req.query("offset") || 0);
+  const limit = Math.min(Number(c.req.query("limit") || 50), 200);
+  const offset = Math.max(Number(c.req.query("offset") || 0), 0);
 
   let query = db.from("guests").select("*", { count: "exact" });
   if (search) {
-    query = query.or(`name.ilike.%${search}%,phone.ilike.%${search}%,zalo_id.eq.${search}`);
+    const safe = search.replace(/[%,]/g, "");
+    query = query.or(`name.ilike.%${safe}%,phone.ilike.%${safe}%,zalo_id.eq.${safe}`);
   }
 
   const { data, error, count } = await query
@@ -23,59 +29,75 @@ guests.get("/", async (c) => {
   return c.json({ success: true, data, meta: { total: count, limit, offset } });
 });
 
-// Get single guest
 guests.get("/:id", async (c) => {
   const id = c.req.param("id");
   const db = getServerDb();
-  const { data, error } = await db.from("guests").select("*").eq("id", id).single();
+  const { data, error } = await db.from("guests").select("*").eq("id", id).maybeSingle();
 
-  if (error) return c.json({ success: false, error: error.message }, 404);
+  if (error) return c.json({ success: false, error: error.message }, 500);
+  if (!data) return c.json({ success: false, error: "Guest not found" }, 404);
   return c.json({ success: true, data });
 });
 
-// Create guest
 guests.post("/", async (c) => {
-  const body = await c.req.json();
+  const parsed = await parseBody(c, guestCreateSchema);
+  if (!parsed.ok) return parsed.response;
+
   const db = getServerDb();
-  const { data, error } = await db.from("guests").insert(body).select().single();
+  const { data, error } = await db.from("guests").insert(parsed.data).select().single();
 
   if (error) return c.json({ success: false, error: error.message }, 400);
   return c.json({ success: true, data }, 201);
 });
 
-// Update guest
 guests.put("/:id", async (c) => {
+  const parsed = await parseBody(c, guestUpdateSchema);
+  if (!parsed.ok) return parsed.response;
+
   const id = c.req.param("id");
-  const body = await c.req.json();
   const db = getServerDb();
-  const { data, error } = await db.from("guests").update(body).eq("id", id).select().single();
+  const { data, error } = await db
+    .from("guests")
+    .update(parsed.data)
+    .eq("id", id)
+    .select()
+    .single();
 
   if (error) return c.json({ success: false, error: error.message }, 400);
   return c.json({ success: true, data });
 });
 
-// Find or create guest by phone/zalo_id (used by chatbot)
 guests.post("/find-or-create", async (c) => {
-  const { phone, zalo_id, facebook_id, name } = await c.req.json();
+  const parsed = await parseBody(c, guestFindOrCreateSchema);
+  if (!parsed.ok) return parsed.response;
+  const { phone, zalo_id, facebook_id, name } = parsed.data;
   const db = getServerDb();
 
-  // Try find by zalo_id first, then phone
   if (zalo_id) {
-    const { data } = await db.from("guests").select("*").eq("zalo_id", zalo_id).single();
+    const { data } = await db.from("guests").select("*").eq("zalo_id", zalo_id).maybeSingle();
+    if (data) return c.json({ success: true, data, created: false });
+  }
+  if (facebook_id) {
+    const { data } = await db
+      .from("guests")
+      .select("*")
+      .eq("facebook_id", facebook_id)
+      .maybeSingle();
     if (data) return c.json({ success: true, data, created: false });
   }
   if (phone) {
-    const { data } = await db.from("guests").select("*").eq("phone", phone).single();
+    const { data } = await db.from("guests").select("*").eq("phone", phone).maybeSingle();
     if (data) {
-      // Link zalo_id if missing
-      if (zalo_id && !data.zalo_id) {
-        await db.from("guests").update({ zalo_id }).eq("id", data.id);
+      const patch: Record<string, string> = {};
+      if (zalo_id && !data.zalo_id) patch.zalo_id = zalo_id;
+      if (facebook_id && !data.facebook_id) patch.facebook_id = facebook_id;
+      if (Object.keys(patch).length > 0) {
+        await db.from("guests").update(patch).eq("id", data.id);
       }
-      return c.json({ success: true, data, created: false });
+      return c.json({ success: true, data: { ...data, ...patch }, created: false });
     }
   }
 
-  // Create new guest
   const { data, error } = await db
     .from("guests")
     .insert({ name: name || "Khách", phone, zalo_id, facebook_id })

@@ -1,11 +1,29 @@
 import { Hono } from "hono";
+import { z } from "zod";
 import { getServerDb } from "../db/supabase-client";
+import { signStaffToken, verifyStaffToken } from "../lib/jwt";
+import { requireAuth, requireRole } from "../middleware/auth";
 
 const auth = new Hono();
 
-// Login
+const loginSchema = z.object({
+  email: z.string().email(),
+  password: z.string().min(1).max(200),
+});
+
+const createStaffSchema = z.object({
+  email: z.string().email(),
+  password: z.string().min(8).max(200),
+  name: z.string().min(1).max(200),
+  role: z.enum(["admin", "manager", "receptionist", "housekeeping"]).optional(),
+});
+
 auth.post("/login", async (c) => {
-  const { email, password } = await c.req.json();
+  const parsed = loginSchema.safeParse(await c.req.json().catch(() => ({})));
+  if (!parsed.success) {
+    return c.json({ success: false, error: "Invalid login payload" }, 400);
+  }
+  const { email, password } = parsed.data;
   const db = getServerDb();
 
   const { data: staff } = await db
@@ -13,59 +31,66 @@ auth.post("/login", async (c) => {
     .select("*")
     .eq("email", email)
     .eq("is_active", true)
-    .single();
+    .maybeSingle();
 
-  if (!staff) return c.json({ success: false, error: "Email không tồn tại" }, 401);
+  if (!staff) {
+    return c.json({ success: false, error: "Email hoặc mật khẩu không đúng" }, 401);
+  }
 
   const valid = await Bun.password.verify(password, staff.password_hash);
-  if (!valid) return c.json({ success: false, error: "Sai mật khẩu" }, 401);
+  if (!valid) {
+    return c.json({ success: false, error: "Email hoặc mật khẩu không đúng" }, 401);
+  }
 
-  // Generate JWT
-  const token = await new Response(
-    new Blob([JSON.stringify({ id: staff.id, email: staff.email, role: staff.role, name: staff.name })])
-  ).text();
-
-  const jwt = btoa(JSON.stringify({ id: staff.id, role: staff.role, exp: Date.now() + 24 * 60 * 60 * 1000 }));
+  const token = await signStaffToken({
+    sub: staff.id,
+    email: staff.email,
+    role: staff.role,
+    name: staff.name,
+  });
 
   return c.json({
     success: true,
-    data: { token: jwt, user: { id: staff.id, name: staff.name, email: staff.email, role: staff.role } },
+    data: {
+      token,
+      user: { id: staff.id, name: staff.name, email: staff.email, role: staff.role },
+    },
   });
 });
 
-// Get current user from token
 auth.get("/me", async (c) => {
-  const token = c.req.header("Authorization")?.replace("Bearer ", "");
+  const token = c.req.header("Authorization")?.replace(/^Bearer\s+/i, "");
   if (!token) return c.json({ success: false, error: "Unauthorized" }, 401);
 
   try {
-    const payload = JSON.parse(atob(token));
-    if (payload.exp < Date.now()) return c.json({ success: false, error: "Token expired" }, 401);
-
+    const payload = await verifyStaffToken(token);
     const db = getServerDb();
     const { data: staff } = await db
       .from("staff")
       .select("id, name, email, role, is_active")
-      .eq("id", payload.id)
+      .eq("id", payload.sub)
       .eq("is_active", true)
-      .single();
+      .maybeSingle();
 
     if (!staff) return c.json({ success: false, error: "User not found" }, 401);
     return c.json({ success: true, data: staff });
   } catch {
-    return c.json({ success: false, error: "Invalid token" }, 401);
+    return c.json({ success: false, error: "Invalid or expired token" }, 401);
   }
 });
 
-// Create staff (admin only)
-auth.post("/staff", async (c) => {
-  const { email, password, name, role } = await c.req.json();
+auth.post("/staff", requireAuth, requireRole("admin"), async (c) => {
+  const parsed = createStaffSchema.safeParse(await c.req.json().catch(() => ({})));
+  if (!parsed.success) {
+    return c.json({ success: false, error: parsed.error.message }, 400);
+  }
+  const { email, password, name, role } = parsed.data;
   const db = getServerDb();
 
   const passwordHash = await Bun.password.hash(password);
   const { data, error } = await db
     .from("staff")
-    .insert({ email, password_hash: passwordHash, name, role: role || "receptionist" })
+    .insert({ email, password_hash: passwordHash, name, role: role ?? "receptionist" })
     .select("id, name, email, role")
     .single();
 

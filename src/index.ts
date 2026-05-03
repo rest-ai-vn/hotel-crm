@@ -5,21 +5,23 @@ import rooms from "./api/rooms";
 import guests from "./api/guests";
 import reservations from "./api/reservations";
 import auth from "./api/auth";
+import { requireAuth } from "./middleware/auth";
 
 const app = new Hono();
 
-// Middleware
 app.use("*", cors());
 app.use("*", honoLogger());
 
-// Health check
 app.get("/health", (c) => c.json({ status: "ok", uptime: process.uptime() }));
 
-// API routes
 app.route("/api/auth", auth);
-app.route("/api/rooms", rooms);
-app.route("/api/guests", guests);
-app.route("/api/reservations", reservations);
+
+const protectedApi = new Hono();
+protectedApi.use("*", requireAuth);
+protectedApi.route("/rooms", rooms);
+protectedApi.route("/guests", guests);
+protectedApi.route("/reservations", reservations);
+app.route("/api", protectedApi);
 
 // Serve frontend (Bun HTML imports)
 app.get("/", (c) => c.html("<!DOCTYPE html><html><body><h1>Hotel CRM</h1><p>Dashboard coming soon</p></body></html>"));
