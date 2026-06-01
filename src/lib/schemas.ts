@@ -131,5 +131,50 @@ export const reservationCheckInSchema = z.object({
   room_id: uuid,
 });
 
+export const ratePlanCreateSchema = z
+  .object({
+    room_type_id: uuid,
+    booking_type: z.enum(["hourly", "overnight", "daytime"]),
+    name: nonEmpty,
+    hourly_rate: z.number().int().min(0).max(100_000_000).nullable().optional(),
+    overnight_rate: z.number().int().min(0).max(100_000_000).nullable().optional(),
+    daytime_rate: z.number().int().min(0).max(100_000_000).nullable().optional(),
+    min_hours: z.number().int().min(1).max(24).default(1),
+    extra_hour_rate: z.number().int().min(0).max(100_000_000).nullable().optional(),
+    weekend_surcharge_pct: z.number().int().min(0).max(100).default(0),
+    valid_from: isoDate.optional(),
+    valid_to: isoDate.nullable().optional(),
+    priority: z.number().int().min(0).max(10_000).default(100),
+    is_active: z.boolean().default(true),
+  })
+  .refine(
+    (d) =>
+      (d.booking_type === "hourly" && (d.hourly_rate ?? 0) > 0) ||
+      (d.booking_type === "overnight" && (d.overnight_rate ?? 0) > 0) ||
+      (d.booking_type === "daytime" && (d.daytime_rate ?? 0) > 0),
+    { message: "Phải nhập giá tương ứng với loại đặt", path: ["booking_type"] },
+  );
+
+export const ratePlanUpdateSchema = z.object({
+  name: nonEmpty.optional(),
+  hourly_rate: z.number().int().min(0).max(100_000_000).nullable().optional(),
+  overnight_rate: z.number().int().min(0).max(100_000_000).nullable().optional(),
+  daytime_rate: z.number().int().min(0).max(100_000_000).nullable().optional(),
+  min_hours: z.number().int().min(1).max(24).optional(),
+  extra_hour_rate: z.number().int().min(0).max(100_000_000).nullable().optional(),
+  weekend_surcharge_pct: z.number().int().min(0).max(100).optional(),
+  valid_from: isoDate.optional(),
+  valid_to: isoDate.nullable().optional(),
+  priority: z.number().int().min(0).max(10_000).optional(),
+  is_active: z.boolean().optional(),
+});
+
+export const paymentCreateSchema = z.object({
+  reservation_id: uuid,
+  amount: z.number().int().min(1).max(2_000_000_000),
+  method: z.enum(["cash", "card", "transfer", "vietqr"]).default("cash"),
+  note: z.string().max(500).optional(),
+});
+
 export type GuestCreate = z.infer<typeof guestCreateSchema>;
 export type ReservationCreate = z.infer<typeof reservationCreateSchema>;

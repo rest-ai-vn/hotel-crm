@@ -83,9 +83,13 @@ rooms.patch("/:id/status", async (c) => {
 
   const id = c.req.param("id");
   const db = getServerDb();
+  const update: Record<string, unknown> = { status: parsed.data.status };
+  if (parsed.data.status === "available") {
+    update.last_cleaned_at = new Date().toISOString();
+  }
   const { data, error } = await db
     .from("rooms")
-    .update({ status: parsed.data.status })
+    .update(update)
     .eq("id", id)
     .select()
     .single();

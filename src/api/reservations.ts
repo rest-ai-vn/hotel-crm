@@ -7,8 +7,63 @@ import {
   reservationCreateSchema,
   reservationUpdateSchema,
 } from "../lib/schemas";
+import { calculatePrice, pickActiveRatePlan, type BookingType } from "../lib/pricing";
 
 const reservations = new Hono();
+
+reservations.get("/quote", async (c) => {
+  const roomTypeId = c.req.query("room_type_id");
+  const bookingType = c.req.query("booking_type") as BookingType | undefined;
+  const checkIn = c.req.query("check_in");
+  const checkOut = c.req.query("check_out");
+  const durationHours = c.req.query("duration_hours");
+
+  if (!roomTypeId || !bookingType || !checkIn || !checkOut) {
+    return c.json(
+      { success: false, error: "room_type_id, booking_type, check_in, check_out required" },
+      400,
+    );
+  }
+  if (!["hourly", "overnight", "daytime"].includes(bookingType)) {
+    return c.json({ success: false, error: "invalid booking_type" }, 400);
+  }
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(checkIn) || !/^\d{4}-\d{2}-\d{2}$/.test(checkOut)) {
+    return c.json({ success: false, error: "dates must be YYYY-MM-DD" }, 400);
+  }
+
+  const db = getServerDb();
+  const { data: plans, error } = await db
+    .from("rate_plans")
+    .select("*")
+    .eq("room_type_id", roomTypeId)
+    .eq("booking_type", bookingType)
+    .eq("is_active", true);
+
+  if (error) return c.json({ success: false, error: error.message }, 500);
+  if (!plans || plans.length === 0) {
+    return c.json({ success: false, error: "Không tìm thấy bảng giá phù hợp" }, 404);
+  }
+
+  const plan = pickActiveRatePlan(plans, checkIn);
+  if (!plan) {
+    return c.json({ success: false, error: "Không có bảng giá hiệu lực cho ngày này" }, 404);
+  }
+
+  try {
+    const breakdown = calculatePrice(plan, {
+      check_in: checkIn,
+      check_out: checkOut,
+      duration_hours: durationHours ? Number(durationHours) : undefined,
+    });
+    return c.json({
+      success: true,
+      data: { plan_id: plan.id, plan_name: plan.name, breakdown },
+    });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : "Lỗi tính giá";
+    return c.json({ success: false, error: msg }, 400);
+  }
+});
 
 reservations.get("/availability", async (c) => {
   const db = getServerDb();

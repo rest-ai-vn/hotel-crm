@@ -1,10 +1,23 @@
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
 import { useAuth } from "../lib/auth-context";
+import { ChatWidget } from "./ChatWidget";
 
-const NAV_ITEMS = [
-  { to: "/rooms", label: "Phòng", icon: "🏨" },
-  { to: "/reservations", label: "Đặt phòng", icon: "📅" },
-  { to: "/guests", label: "Khách hàng", icon: "👥" },
+type NavItem = {
+  to: string;
+  label: string;
+  icon: string;
+  end?: boolean;
+  roles?: Array<"admin" | "manager" | "receptionist" | "housekeeping">;
+};
+
+const NAV_ITEMS: NavItem[] = [
+  { to: "/", label: "Tổng quan", icon: "📊", end: true, roles: ["admin", "manager", "receptionist"] },
+  { to: "/calendar", label: "Lịch", icon: "🗓️", roles: ["admin", "manager", "receptionist"] },
+  { to: "/rooms", label: "Phòng", icon: "🏨", roles: ["admin", "manager", "receptionist"] },
+  { to: "/reservations", label: "Đặt phòng", icon: "📅", roles: ["admin", "manager", "receptionist"] },
+  { to: "/guests", label: "Khách hàng", icon: "👥", roles: ["admin", "manager", "receptionist"] },
+  { to: "/housekeeping", label: "Buồng phòng", icon: "🧹" },
+  { to: "/rate-plans", label: "Bảng giá", icon: "💰", roles: ["admin", "manager"] },
 ];
 
 export function AppShell() {
@@ -39,10 +52,13 @@ export function AppShell() {
           Hotel CRM
         </div>
         <nav style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-          {NAV_ITEMS.map((item) => (
+          {NAV_ITEMS.filter(
+            (item) => !item.roles || item.roles.includes(user?.role as never),
+          ).map((item) => (
             <NavLink
               key={item.to}
               to={item.to}
+              end={item.end}
               style={({ isActive }) => ({
                 display: "flex",
                 alignItems: "center",
@@ -85,6 +101,7 @@ export function AppShell() {
       <main style={{ overflow: "auto", padding: "var(--space-6)" }}>
         <Outlet />
       </main>
+      <ChatWidget />
     </div>
   );
 }

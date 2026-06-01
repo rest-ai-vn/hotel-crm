@@ -5,6 +5,10 @@ import { Login } from "./pages/Login";
 import { Rooms } from "./pages/Rooms";
 import { Reservations } from "./pages/Reservations";
 import { Guests } from "./pages/Guests";
+import { Dashboard } from "./pages/Dashboard";
+import { Housekeeping } from "./pages/Housekeeping";
+import { RatePlans } from "./pages/RatePlans";
+import { Calendar } from "./pages/Calendar";
 
 export default function App() {
   return (
@@ -17,11 +21,14 @@ export default function App() {
           </ProtectedRoute>
         }
       >
-        <Route path="/" element={<Navigate to="/rooms" replace />} />
+        <Route path="/" element={<Dashboard />} />
         <Route path="/rooms" element={<Rooms />} />
         <Route path="/reservations" element={<Reservations />} />
         <Route path="/guests" element={<Guests />} />
-        <Route path="*" element={<Navigate to="/rooms" replace />} />
+        <Route path="/housekeeping" element={<Housekeeping />} />
+        <Route path="/calendar" element={<Calendar />} />
+        <Route path="/rate-plans" element={<RatePlans />} />
+        <Route path="*" element={<Navigate to="/" replace />} />
       </Route>
     </Routes>
   );

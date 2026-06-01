@@ -5,7 +5,11 @@ import rooms from "./api/rooms";
 import guests from "./api/guests";
 import reservations from "./api/reservations";
 import auth from "./api/auth";
-import { requireAuth } from "./middleware/auth";
+import dashboard from "./api/dashboard";
+import chat from "./api/chat";
+import payments from "./api/payments";
+import ratePlans from "./api/rate-plans";
+import { requireAuth, requireRole } from "./middleware/auth";
 
 const app = new Hono();
 
@@ -21,6 +25,15 @@ protectedApi.use("*", requireAuth);
 protectedApi.route("/rooms", rooms);
 protectedApi.route("/guests", guests);
 protectedApi.route("/reservations", reservations);
+protectedApi.route("/dashboard", dashboard);
+protectedApi.route("/chat", chat);
+protectedApi.route("/payments", payments);
+
+const adminApi = new Hono();
+adminApi.use("*", requireRole("admin", "manager"));
+adminApi.route("/rate-plans", ratePlans);
+protectedApi.route("/", adminApi);
+
 app.route("/api", protectedApi);
 
 // Serve frontend (Bun HTML imports)

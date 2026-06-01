@@ -49,6 +49,8 @@ export interface Room {
   status: RoomStatus;
   notes: string | null;
   is_active: boolean;
+  last_cleaned_at?: string | null;
+  cleaning_assignee?: string | null;
   room_types?: { name: string; code: string };
 }
 
@@ -104,6 +106,18 @@ export interface Reservation {
   guests?: { name: string; phone: string | null };
   room_types?: { name: string; code: string };
   rooms?: { number: string; floor: number } | null;
+}
+
+export type PaymentMethod = "cash" | "card" | "transfer" | "vietqr";
+
+export interface Payment {
+  id: string;
+  reservation_id: string;
+  amount: number;
+  method: PaymentMethod;
+  note: string | null;
+  received_by: string | null;
+  created_at: string;
 }
 
 export interface StaffUser {
