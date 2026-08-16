@@ -1,9 +1,16 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { apiFetch } from "../lib/api";
-import { formatVnd, todayIso } from "../lib/format";
+import { formatDate, formatVnd, todayIso } from "../lib/format";
 import { downloadCsv } from "../lib/csv";
-import type { BreakdownReport, ResidenceReport, RevenueReport } from "../lib/types";
+import { useAuth } from "../lib/auth-context";
+import type {
+  BreakdownReport,
+  ChainReport,
+  ReceivablesReport,
+  ResidenceReport,
+  RevenueReport,
+} from "../lib/types";
 
 function firstOfMonthIso(): string {
   const d = new Date();
@@ -166,8 +173,139 @@ export function Reports() {
         )}
       </section>
 
+      <ReceivablesSection />
+
+      <ChainSection from={from} to={to} />
+
       <ResidenceSection />
     </div>
+  );
+}
+
+function ReceivablesSection() {
+  const rec = useQuery({
+    queryKey: ["reports-receivables"],
+    queryFn: () => apiFetch<ReceivablesReport>("/api/reports/receivables"),
+  });
+  const r = rec.data;
+  const total = (r?.companies ?? []).reduce((s, x) => s + x.outstanding, 0);
+
+  return (
+    <section className="card" style={{ padding: "var(--space-4)" }}>
+      <div className="row" style={{ justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
+        <div>
+          <h2 style={{ margin: 0, fontSize: 16 }}>Công nợ công ty</h2>
+          <div className="muted" style={{ fontSize: 13 }}>
+            Đặt phòng gắn công ty chưa thanh toán đủ
+          </div>
+        </div>
+        <div style={{ fontSize: 15, fontWeight: 700, color: total > 0 ? "var(--color-danger)" : "inherit" }}>
+          {formatVnd(total)}
+        </div>
+      </div>
+
+      {rec.isLoading ? (
+        <div className="muted" style={{ marginTop: "var(--space-3)" }}>Đang tải…</div>
+      ) : !r || r.companies.length === 0 ? (
+        <div className="muted" style={{ marginTop: "var(--space-3)", fontSize: 13 }}>
+          Không có công nợ nào.
+        </div>
+      ) : (
+        <>
+          <table className="table" style={{ marginTop: "var(--space-3)" }}>
+            <thead>
+              <tr>
+                <th>Công ty</th>
+                <th>Số đặt phòng nợ</th>
+                <th>Còn nợ</th>
+              </tr>
+            </thead>
+            <tbody>
+              {r.companies.map((co) => (
+                <tr key={co.company_id}>
+                  <td style={{ fontWeight: 600 }}>{co.company_name}</td>
+                  <td>{co.count}</td>
+                  <td style={{ color: "var(--color-danger)", fontWeight: 600 }}>
+                    {formatVnd(co.outstanding)}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <details style={{ marginTop: "var(--space-2)" }}>
+            <summary className="muted" style={{ fontSize: 12, cursor: "pointer" }}>
+              Chi tiết từng đặt phòng ({r.details.length})
+            </summary>
+            <table className="table" style={{ marginTop: 8 }}>
+              <tbody>
+                {r.details.map((d) => (
+                  <tr key={d.reservation_id}>
+                    <td style={{ fontFamily: "ui-monospace, monospace", fontSize: 12 }}>
+                      {d.confirmation_code}
+                    </td>
+                    <td>{d.company_name}</td>
+                    <td style={{ fontSize: 12 }}>{formatDate(d.check_in)}</td>
+                    <td>{formatVnd(d.outstanding)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </details>
+        </>
+      )}
+    </section>
+  );
+}
+
+function ChainSection({ from, to }: { from: string; to: string }) {
+  const { user } = useAuth();
+  const chain = useQuery({
+    queryKey: ["reports-chain", from, to],
+    queryFn: () => apiFetch<ChainReport>("/api/reports/chain", { query: { from, to } }),
+    enabled: user?.role === "admin",
+  });
+
+  if (user?.role !== "admin") return null;
+  const r = chain.data;
+
+  return (
+    <section className="card" style={{ padding: "var(--space-4)" }}>
+      <div className="row" style={{ justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
+        <div>
+          <h2 style={{ margin: 0, fontSize: 16 }}>Toàn chuỗi (mọi cơ sở)</h2>
+          <div className="muted" style={{ fontSize: 13 }}>Doanh thu gộp theo cơ sở trong kỳ</div>
+        </div>
+        <div style={{ fontSize: 15, fontWeight: 700, color: "var(--color-accent)" }}>
+          {formatVnd(r?.total ?? 0)}
+        </div>
+      </div>
+      {chain.isLoading ? (
+        <div className="muted" style={{ marginTop: "var(--space-3)" }}>Đang tải…</div>
+      ) : !r || r.rows.length === 0 ? (
+        <div className="muted" style={{ marginTop: "var(--space-3)", fontSize: 13 }}>
+          Chưa có doanh thu trong kỳ.
+        </div>
+      ) : (
+        <table className="table" style={{ marginTop: "var(--space-3)" }}>
+          <thead>
+            <tr>
+              <th>Cơ sở</th>
+              <th>Số đặt phòng</th>
+              <th>Doanh thu</th>
+            </tr>
+          </thead>
+          <tbody>
+            {r.rows.map((row) => (
+              <tr key={row.key}>
+                <td style={{ fontWeight: 600 }}>{row.label}</td>
+                <td>{row.count}</td>
+                <td>{formatVnd(row.amount)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </section>
   );
 }
 

@@ -11,6 +11,10 @@ const propertyCreateSchema = z.object({
   code: z.string().min(1).max(50),
   address: z.string().max(500).optional(),
   phone: z.string().max(50).optional(),
+  vat_rate: z.number().int().min(0).max(50).optional(),
+  bank_id: z.string().max(20).nullable().optional(),
+  bank_account_no: z.string().max(30).nullable().optional(),
+  bank_account_name: z.string().max(100).nullable().optional(),
 });
 const propertyUpdateSchema = propertyCreateSchema.partial().extend({
   is_active: z.boolean().optional(),

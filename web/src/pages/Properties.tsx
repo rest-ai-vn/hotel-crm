@@ -14,6 +14,7 @@ const ROLE_LABEL: Record<StaffRole, string> = {
 
 export function Properties() {
   const qc = useQueryClient();
+  const [editing, setEditing] = useState<Property | null>(null);
   const list = useQuery({
     queryKey: ["properties"],
     queryFn: () => apiFetch<Property[]>("/api/properties"),
@@ -44,7 +45,9 @@ export function Properties() {
                 <th>Địa chỉ</th>
                 <th>SĐT</th>
                 <th>Ngày tạo</th>
+                <th>VAT</th>
                 <th>Trạng thái</th>
+                <th></th>
               </tr>
             </thead>
             <tbody>
@@ -55,6 +58,7 @@ export function Properties() {
                   <td className="muted" style={{ fontSize: 13 }}>{p.address ?? "—"}</td>
                   <td>{p.phone ?? "—"}</td>
                   <td style={{ fontSize: 12 }}>{formatDate(p.created_at)}</td>
+                  <td>{p.vat_rate ? `${p.vat_rate}%` : "—"}</td>
                   <td>
                     {p.is_active ? (
                       <span className="pill success">Hoạt động</span>
@@ -62,12 +66,32 @@ export function Properties() {
                       <span className="pill neutral">Ngừng</span>
                     )}
                   </td>
+                  <td style={{ width: 1 }}>
+                    <button
+                      className="btn btn-ghost"
+                      style={{ fontSize: 12, padding: "2px 8px" }}
+                      onClick={() => setEditing(p)}
+                    >
+                      Sửa
+                    </button>
+                  </td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
       )}
+
+      {editing ? (
+        <EditPropertyModal
+          property={editing}
+          onClose={() => setEditing(null)}
+          onSaved={() => {
+            setEditing(null);
+            qc.invalidateQueries({ queryKey: ["properties"] });
+          }}
+        />
+      ) : null}
 
       <CreateStaffCard properties={rows} />
 
@@ -248,6 +272,92 @@ function CreatePropertyCard({ onCreated }: { onCreated: () => void }) {
         </button>
       </form>
       {error ? <div style={{ color: "var(--color-danger)", fontSize: 13, marginTop: 8 }}>{error}</div> : null}
+    </div>
+  );
+}
+
+function EditPropertyModal({
+  property,
+  onClose,
+  onSaved,
+}: {
+  property: Property;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const [vatRate, setVatRate] = useState(String(property.vat_rate ?? 0));
+  const [bankId, setBankId] = useState(property.bank_id ?? "");
+  const [bankNo, setBankNo] = useState(property.bank_account_no ?? "");
+  const [bankName, setBankName] = useState(property.bank_account_name ?? "");
+  const [error, setError] = useState<string | null>(null);
+
+  const save = useMutation({
+    mutationFn: () =>
+      apiFetch<Property>(`/api/properties/${property.id}`, {
+        method: "PUT",
+        body: {
+          vat_rate: Number(vatRate) || 0,
+          bank_id: bankId || null,
+          bank_account_no: bankNo || null,
+          bank_account_name: bankName || null,
+        },
+      }),
+    onSuccess: onSaved,
+    onError: (e) => setError(e instanceof Error ? e.message : "Lỗi"),
+  });
+
+  return (
+    <div
+      onClick={onClose}
+      style={{
+        position: "fixed",
+        inset: 0,
+        background: "oklch(0% 0 0 / 0.4)",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        zIndex: 70,
+        padding: "var(--space-4)",
+      }}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          background: "var(--color-surface)",
+          width: 420,
+          maxWidth: "100%",
+          borderRadius: "var(--radius-lg)",
+          boxShadow: "var(--shadow-md)",
+          padding: "var(--space-5)",
+        }}
+      >
+        <div className="row" style={{ justifyContent: "space-between", marginBottom: "var(--space-4)" }}>
+          <h2 style={{ margin: 0, fontSize: 18 }}>{property.name}</h2>
+          <button className="btn btn-ghost" onClick={onClose}>✕</button>
+        </div>
+        <div className="stack" style={{ gap: "var(--space-3)" }}>
+          <label className="stack" style={{ gap: 4 }}>
+            <span className="muted" style={{ fontSize: 12 }}>VAT (%) — áp vào báo giá</span>
+            <input className="input" inputMode="numeric" value={vatRate} onChange={(e) => setVatRate(e.target.value.replace(/[^0-9]/g, ""))} />
+          </label>
+          <label className="stack" style={{ gap: 4 }}>
+            <span className="muted" style={{ fontSize: 12 }}>Mã ngân hàng VietQR (VD: VCB, TCB, MB)</span>
+            <input className="input" value={bankId} onChange={(e) => setBankId(e.target.value.toUpperCase())} />
+          </label>
+          <label className="stack" style={{ gap: 4 }}>
+            <span className="muted" style={{ fontSize: 12 }}>Số tài khoản</span>
+            <input className="input" inputMode="numeric" value={bankNo} onChange={(e) => setBankNo(e.target.value.replace(/[^0-9]/g, ""))} />
+          </label>
+          <label className="stack" style={{ gap: 4 }}>
+            <span className="muted" style={{ fontSize: 12 }}>Tên chủ tài khoản (không dấu)</span>
+            <input className="input" value={bankName} onChange={(e) => setBankName(e.target.value.toUpperCase())} />
+          </label>
+          {error ? <div style={{ color: "var(--color-danger)", fontSize: 13 }}>{error}</div> : null}
+          <button className="btn btn-primary" disabled={save.isPending} onClick={() => save.mutate()}>
+            {save.isPending ? "Đang lưu…" : "Lưu cấu hình"}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

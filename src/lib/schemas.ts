@@ -95,6 +95,9 @@ export const reservationCreateSchema = z
     discount_amount: intMoney.optional(),
     tax_amount: intMoney.optional(),
     total_amount: intMoney,
+    rooms_count: z.number().int().min(1).max(10).default(1),
+    voucher_id: uuid.optional(),
+    company_id: uuid.optional(),
     notes: z.string().max(2000).optional(),
     internal_notes: z.string().max(2000).optional(),
   })
@@ -237,6 +240,54 @@ export const reservationExtendSchema = z.object({
 });
 export const reservationNoShowSchema = z.object({
   note: z.string().max(500).optional(),
+  forfeit_deposit: z.boolean().default(false),
+});
+
+// ── Vouchers ──
+export const voucherCreateSchema = z
+  .object({
+    code: z.string().min(2).max(50),
+    kind: z.enum(["percent", "fixed"]),
+    value: z.number().int().min(1).max(100_000_000),
+    valid_from: isoDate.optional(),
+    valid_to: isoDate.nullable().optional(),
+    max_uses: z.number().int().min(1).max(1_000_000).nullable().optional(),
+    is_active: z.boolean().default(true),
+  })
+  .refine((d) => d.kind !== "percent" || d.value <= 100, {
+    message: "Voucher phần trăm tối đa 100%",
+    path: ["value"],
+  });
+export const voucherUpdateSchema = z.object({
+  is_active: z.boolean().optional(),
+  valid_to: isoDate.nullable().optional(),
+  max_uses: z.number().int().min(1).max(1_000_000).nullable().optional(),
+});
+
+// ── Companies (công nợ) ──
+export const companyCreateSchema = z.object({
+  name: nonEmpty,
+  tax_code: z.string().max(50).optional(),
+  contact_name: z.string().max(200).optional(),
+  phone: z.string().max(50).optional(),
+  email: z.string().email().optional(),
+  note: z.string().max(1000).optional(),
+});
+export const companyUpdateSchema = companyCreateSchema.partial().extend({
+  is_active: z.boolean().optional(),
+});
+
+// ── Work orders (phiếu bảo trì) ──
+export const workOrderCreateSchema = z.object({
+  room_id: uuid.optional(),
+  title: nonEmpty,
+  note: z.string().max(2000).optional(),
+  set_room_maintenance: z.boolean().default(false),
+});
+export const workOrderUpdateSchema = z.object({
+  status: z.enum(["open", "in_progress", "done"]).optional(),
+  note: z.string().max(2000).optional(),
+  release_room: z.boolean().default(false),
 });
 
 // ── POS / Additional services ──

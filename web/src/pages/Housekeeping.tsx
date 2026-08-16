@@ -1,7 +1,8 @@
+import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiFetch } from "../lib/api";
 import { formatDateTime } from "../lib/format";
-import type { Room, RoomStatus } from "../lib/types";
+import type { Room, RoomStatus, WorkOrder, WorkOrderStatus } from "../lib/types";
 
 const PRIORITY_STATUSES: RoomStatus[] = ["cleaning", "maintenance", "out_of_order"];
 
@@ -75,9 +76,177 @@ export function Housekeeping() {
             rooms={ready}
             onMark={(id, status) => updateStatus.mutate({ id, status })}
           />
+          <WorkOrdersSection rooms={rooms} />
         </>
       )}
     </div>
+  );
+}
+
+const WO_LABEL: Record<WorkOrderStatus, string> = {
+  open: "Mới",
+  in_progress: "Đang sửa",
+  done: "Đã xong",
+};
+const WO_PILL: Record<WorkOrderStatus, string> = {
+  open: "danger",
+  in_progress: "warning",
+  done: "success",
+};
+
+function WorkOrdersSection({ rooms }: { rooms: Room[] }) {
+  const qc = useQueryClient();
+  const [title, setTitle] = useState("");
+  const [roomId, setRoomId] = useState("");
+  const [markMaintenance, setMarkMaintenance] = useState(true);
+  const [showDone, setShowDone] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const list = useQuery({
+    queryKey: ["work-orders"],
+    queryFn: () => apiFetch<WorkOrder[]>("/api/work-orders"),
+  });
+
+  const create = useMutation({
+    mutationFn: () =>
+      apiFetch<WorkOrder>("/api/work-orders", {
+        method: "POST",
+        body: {
+          title,
+          room_id: roomId || undefined,
+          set_room_maintenance: markMaintenance && !!roomId,
+        },
+      }),
+    onSuccess: () => {
+      setTitle("");
+      setRoomId("");
+      setError(null);
+      qc.invalidateQueries({ queryKey: ["work-orders"] });
+      qc.invalidateQueries({ queryKey: ["rooms"] });
+    },
+    onError: (e) => setError(e instanceof Error ? e.message : "Lỗi"),
+  });
+
+  const advance = useMutation({
+    mutationFn: (wo: WorkOrder) =>
+      apiFetch(`/api/work-orders/${wo.id}`, {
+        method: "PUT",
+        body:
+          wo.status === "open"
+            ? { status: "in_progress" }
+            : { status: "done", release_room: true },
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["work-orders"] });
+      qc.invalidateQueries({ queryKey: ["rooms"] });
+    },
+  });
+
+  const rows = (list.data ?? []).filter((w) => showDone || w.status !== "done");
+
+  return (
+    <section>
+      <h2
+        style={{
+          fontSize: 14,
+          textTransform: "uppercase",
+          letterSpacing: "0.06em",
+          color: "var(--color-text-soft)",
+          margin: "0 0 var(--space-2)",
+        }}
+      >
+        Phiếu bảo trì
+      </h2>
+      <div className="card" style={{ padding: "var(--space-4)" }}>
+        <form
+          className="row"
+          style={{ gap: 8, flexWrap: "wrap" }}
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (title && !create.isPending) create.mutate();
+          }}
+        >
+          <input
+            className="input"
+            style={{ flex: "1 1 220px" }}
+            placeholder="Sự cố (VD: Điều hòa không mát)"
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+          />
+          <select className="input" style={{ width: "auto" }} value={roomId} onChange={(e) => setRoomId(e.target.value)}>
+            <option value="">Không gắn phòng</option>
+            {rooms.map((r) => (
+              <option key={r.id} value={r.id}>
+                Phòng {r.number}
+              </option>
+            ))}
+          </select>
+          <label className="row" style={{ gap: 4, fontSize: 12, alignItems: "center" }}>
+            <input
+              type="checkbox"
+              checked={markMaintenance}
+              onChange={(e) => setMarkMaintenance(e.target.checked)}
+            />
+            Chuyển phòng sang bảo trì
+          </label>
+          <button className="btn btn-primary" type="submit" disabled={!title || create.isPending}>
+            + Tạo phiếu
+          </button>
+        </form>
+        {error ? <div style={{ color: "var(--color-danger)", fontSize: 13, marginTop: 8 }}>{error}</div> : null}
+
+        <div className="row" style={{ justifyContent: "flex-end", marginTop: "var(--space-2)" }}>
+          <label className="row" style={{ gap: 4, fontSize: 12, alignItems: "center" }}>
+            <input type="checkbox" checked={showDone} onChange={(e) => setShowDone(e.target.checked)} />
+            Hiện phiếu đã xong
+          </label>
+        </div>
+
+        {rows.length === 0 ? (
+          <div className="muted" style={{ fontSize: 13, marginTop: "var(--space-2)" }}>
+            Không có phiếu bảo trì nào đang mở.
+          </div>
+        ) : (
+          <table className="table" style={{ marginTop: "var(--space-2)" }}>
+            <thead>
+              <tr>
+                <th>Sự cố</th>
+                <th>Phòng</th>
+                <th>Người tạo</th>
+                <th>Lúc</th>
+                <th>Trạng thái</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((wo) => (
+                <tr key={wo.id}>
+                  <td>{wo.title}</td>
+                  <td>{wo.rooms?.number ?? "—"}</td>
+                  <td>{wo.staff?.name ?? "—"}</td>
+                  <td style={{ fontSize: 12 }}>{formatDateTime(wo.created_at)}</td>
+                  <td>
+                    <span className={`pill ${WO_PILL[wo.status]}`}>{WO_LABEL[wo.status]}</span>
+                  </td>
+                  <td style={{ width: 1 }}>
+                    {wo.status !== "done" ? (
+                      <button
+                        className="btn btn-ghost"
+                        style={{ fontSize: 12, padding: "2px 8px" }}
+                        onClick={() => advance.mutate(wo)}
+                        disabled={advance.isPending}
+                      >
+                        {wo.status === "open" ? "Bắt đầu sửa" : "✓ Xong (phòng → dọn)"}
+                      </button>
+                    ) : null}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+    </section>
   );
 }
 

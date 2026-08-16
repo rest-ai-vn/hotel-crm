@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiFetch } from "../lib/api";
 import { formatDate, formatVnd, todayIso } from "../lib/format";
-import type { BookingType, RateOverride, RoomType } from "../lib/types";
+import type { BookingType, RateOverride, RoomType, Voucher } from "../lib/types";
 
 interface RatePlan {
   id: string;
@@ -131,6 +131,8 @@ export function RatePlans() {
 
       <RateOverridesSection types={types.data ?? []} />
 
+      <VouchersSection />
+
       {creating || editing ? (
         <RatePlanModal
           plan={editing}
@@ -147,6 +149,130 @@ export function RatePlans() {
         />
       ) : null}
     </div>
+  );
+}
+
+function VouchersSection() {
+  const qc = useQueryClient();
+  const [code, setCode] = useState("");
+  const [kind, setKind] = useState<"percent" | "fixed">("percent");
+  const [value, setValue] = useState("");
+  const [validTo, setValidTo] = useState("");
+  const [maxUses, setMaxUses] = useState("");
+  const [error, setError] = useState<string | null>(null);
+
+  const list = useQuery({
+    queryKey: ["vouchers"],
+    queryFn: () => apiFetch<Voucher[]>("/api/vouchers"),
+  });
+
+  const create = useMutation({
+    mutationFn: () =>
+      apiFetch<Voucher>("/api/vouchers", {
+        method: "POST",
+        body: {
+          code,
+          kind,
+          value: Number(value),
+          valid_to: validTo || null,
+          max_uses: maxUses ? Number(maxUses) : null,
+        },
+      }),
+    onSuccess: () => {
+      setCode("");
+      setValue("");
+      setValidTo("");
+      setMaxUses("");
+      setError(null);
+      qc.invalidateQueries({ queryKey: ["vouchers"] });
+    },
+    onError: (e) => setError(e instanceof Error ? e.message : "Lỗi"),
+  });
+
+  const toggle = useMutation({
+    mutationFn: (v: Voucher) =>
+      apiFetch(`/api/vouchers/${v.id}`, { method: "PUT", body: { is_active: !v.is_active } }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["vouchers"] }),
+  });
+
+  const rows = list.data ?? [];
+
+  return (
+    <section style={{ marginTop: "var(--space-4)" }}>
+      <h2 style={{ fontSize: 14, textTransform: "uppercase", letterSpacing: "0.05em", color: "var(--color-text-soft)" }}>
+        Mã giảm giá (voucher)
+      </h2>
+      <div className="card" style={{ padding: "var(--space-4)" }}>
+        <form
+          className="row"
+          style={{ gap: 8, flexWrap: "wrap" }}
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (code && value && !create.isPending) create.mutate();
+          }}
+        >
+          <input className="input" style={{ width: 140 }} placeholder="Mã (VD: HE2026)" value={code} onChange={(e) => setCode(e.target.value.toUpperCase().replace(/[^A-Z0-9_-]/g, ""))} />
+          <select className="input" style={{ width: "auto" }} value={kind} onChange={(e) => setKind(e.target.value as "percent" | "fixed")}>
+            <option value="percent">Giảm %</option>
+            <option value="fixed">Giảm tiền</option>
+          </select>
+          <input className="input" style={{ width: 120 }} placeholder={kind === "percent" ? "% (1-100)" : "Số tiền"} inputMode="numeric" value={value} onChange={(e) => setValue(e.target.value.replace(/[^0-9]/g, ""))} />
+          <input type="date" className="input" style={{ width: "auto" }} title="Hạn dùng (tuỳ chọn)" value={validTo} onChange={(e) => setValidTo(e.target.value)} />
+          <input className="input" style={{ width: 110 }} placeholder="Số lượt tối đa" inputMode="numeric" value={maxUses} onChange={(e) => setMaxUses(e.target.value.replace(/[^0-9]/g, ""))} />
+          <button className="btn btn-primary" type="submit" disabled={!code || !value || create.isPending}>
+            + Tạo mã
+          </button>
+        </form>
+        {error ? <div style={{ color: "var(--color-danger)", fontSize: 13, marginTop: 8 }}>{error}</div> : null}
+
+        {rows.length > 0 ? (
+          <table className="table" style={{ marginTop: "var(--space-3)" }}>
+            <thead>
+              <tr>
+                <th>Mã</th>
+                <th>Giảm</th>
+                <th>Hạn</th>
+                <th>Đã dùng</th>
+                <th>Trạng thái</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((v) => (
+                <tr key={v.id}>
+                  <td style={{ fontFamily: "ui-monospace, monospace" }}>{v.code}</td>
+                  <td>{v.kind === "percent" ? `${v.value}%` : formatVnd(v.value)}</td>
+                  <td style={{ fontSize: 12 }}>{v.valid_to ? formatDate(v.valid_to) : "Không hạn"}</td>
+                  <td>
+                    {v.used_count}
+                    {v.max_uses ? ` / ${v.max_uses}` : ""}
+                  </td>
+                  <td>
+                    <span className={`pill ${v.is_active ? "success" : "neutral"}`}>
+                      {v.is_active ? "Hoạt động" : "Tắt"}
+                    </span>
+                  </td>
+                  <td style={{ width: 1 }}>
+                    <button
+                      className="btn btn-ghost"
+                      style={{ fontSize: 12, padding: "2px 8px" }}
+                      onClick={() => toggle.mutate(v)}
+                      disabled={toggle.isPending}
+                    >
+                      {v.is_active ? "Tắt" : "Bật"}
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        ) : (
+          <div className="muted" style={{ fontSize: 13, marginTop: "var(--space-3)" }}>
+            Chưa có mã giảm giá. Lễ tân nhập mã khi tạo đặt phòng để tự trừ tiền.
+          </div>
+        )}
+      </div>
+    </section>
   );
 }
 

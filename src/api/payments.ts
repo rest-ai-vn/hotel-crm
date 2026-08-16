@@ -4,8 +4,60 @@ import { parseBody } from "../lib/validate";
 import { paymentCreateSchema } from "../lib/schemas";
 import { requireRole } from "../middleware/auth";
 import { logAudit } from "../lib/audit";
+import { buildVietQrUrl } from "../lib/billing";
+import { computeRemaining, type FolioPayment } from "../lib/folio";
 
 const payments = new Hono();
+
+// Dynamic VietQR for the remaining folio balance of a reservation.
+payments.get("/vietqr", async (c) => {
+  const reservationId = c.req.query("reservation_id");
+  if (!reservationId) {
+    return c.json({ success: false, error: "reservation_id required" }, 400);
+  }
+  const db = getServerDb();
+  const user = c.get("user");
+
+  const [resRes, paysRes, propRes] = await Promise.all([
+    db
+      .from("reservations")
+      .select("confirmation_code, total_amount, services_total")
+      .eq("id", reservationId)
+      .eq("property_id", user.property_id)
+      .maybeSingle(),
+    db.from("payments").select("amount, kind").eq("reservation_id", reservationId),
+    db
+      .from("properties")
+      .select("bank_id, bank_account_no, bank_account_name")
+      .eq("id", user.property_id)
+      .maybeSingle(),
+  ]);
+
+  if (!resRes.data) return c.json({ success: false, error: "Reservation not found" }, 404);
+  const prop = propRes.data;
+  if (!prop?.bank_id || !prop?.bank_account_no) {
+    return c.json(
+      { success: false, error: "Chưa cấu hình tài khoản ngân hàng cho cơ sở (trang Cơ sở)" },
+      400,
+    );
+  }
+
+  const folioTotal =
+    (resRes.data.total_amount ?? 0) + (resRes.data.services_total ?? 0);
+  const remaining = computeRemaining(folioTotal, (paysRes.data ?? []) as FolioPayment[]);
+  if (remaining <= 0) {
+    return c.json({ success: false, error: "Đặt phòng này đã thanh toán đủ" }, 400);
+  }
+
+  const url = buildVietQrUrl({
+    bankId: prop.bank_id,
+    accountNo: prop.bank_account_no,
+    accountName: prop.bank_account_name ?? "",
+    amount: remaining,
+    memo: resRes.data.confirmation_code,
+  });
+  return c.json({ success: true, data: { url, amount: remaining } });
+});
 
 payments.get("/", async (c) => {
   const reservationId = c.req.query("reservation_id");

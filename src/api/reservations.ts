@@ -17,6 +17,7 @@ import {
   type RateOverride,
 } from "../lib/pricing";
 import { computeTier, pointsForAmount } from "../lib/loyalty";
+import { computeVat, voucherDiscount, voucherError } from "../lib/billing";
 import { logAudit } from "../lib/audit";
 
 const reservations = new Hono();
@@ -81,9 +82,56 @@ reservations.get("/quote", async (c) => {
       },
       (overrides ?? []) as RateOverride[],
     );
+
+    // Voucher (optional) — discount on the room subtotal.
+    const voucherCode = c.req.query("voucher_code");
+    let discount = 0;
+    let voucherId: string | null = null;
+    let voucherErr: string | null = null;
+    if (voucherCode) {
+      const { data: v } = await db
+        .from("vouchers")
+        .select("*")
+        .eq("property_id", pid)
+        .eq("code", voucherCode.trim().toUpperCase())
+        .maybeSingle();
+      if (!v) {
+        voucherErr = "Mã giảm giá không tồn tại";
+      } else {
+        const err = voucherError(v, checkIn);
+        if (err) {
+          voucherErr = err;
+        } else {
+          discount = voucherDiscount(v, breakdown.total);
+          voucherId = v.id;
+        }
+      }
+    }
+
+    // VAT from property settings, applied after discount.
+    const { data: prop } = await db
+      .from("properties")
+      .select("vat_rate")
+      .eq("id", pid)
+      .maybeSingle();
+    const vatRate = prop?.vat_rate ?? 0;
+    const tax = computeVat(breakdown.total - discount, vatRate);
+
     return c.json({
       success: true,
-      data: { plan_id: plan.id, plan_name: plan.name, breakdown },
+      data: {
+        plan_id: plan.id,
+        plan_name: plan.name,
+        breakdown: {
+          ...breakdown,
+          discount,
+          vat_rate: vatRate,
+          tax_amount: tax,
+          grand_total: breakdown.total - discount + tax,
+          voucher_id: voucherId,
+          voucher_error: voucherErr,
+        },
+      },
     });
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Lỗi tính giá";
@@ -200,28 +248,83 @@ reservations.post("/", async (c) => {
   ]);
   const totalRooms = totalRes.count ?? 0;
   const booked = bookedRes.count ?? 0;
-  if (totalRooms === 0 || booked >= totalRooms) {
+  const { rooms_count, ...reservationData } = parsed.data;
+  if (totalRooms === 0 || booked + rooms_count > totalRooms) {
     return c.json(
       {
         success: false,
-        error: `Hết phòng loại này trong khoảng ngày đã chọn (${booked}/${totalRooms} đã đặt)`,
+        error: `Không đủ phòng loại này trong khoảng ngày đã chọn (còn ${Math.max(0, totalRooms - booked)}, cần ${rooms_count})`,
       },
       409,
     );
   }
 
-  const { data, error } = await db
-    .from("reservations")
-    .insert({ ...parsed.data, property_id: user.property_id, created_by: user.sub })
-    .select()
-    .single();
+  // Voucher/company must belong to this property.
+  if (reservationData.voucher_id) {
+    const { data: v } = await db
+      .from("vouchers")
+      .select("id, used_count")
+      .eq("id", reservationData.voucher_id)
+      .eq("property_id", user.property_id)
+      .maybeSingle();
+    if (!v) return c.json({ success: false, error: "Mã giảm giá không hợp lệ" }, 400);
+  }
+  if (reservationData.company_id) {
+    const { data: comp } = await db
+      .from("companies")
+      .select("id")
+      .eq("id", reservationData.company_id)
+      .eq("property_id", user.property_id)
+      .eq("is_active", true)
+      .maybeSingle();
+    if (!comp) return c.json({ success: false, error: "Công ty không hợp lệ" }, 400);
+  }
+
+  const groupCode =
+    rooms_count > 1 ? `GRP-${Date.now().toString(36).toUpperCase().slice(-6)}` : null;
+  const rows = Array.from({ length: rooms_count }, () => ({
+    ...reservationData,
+    property_id: user.property_id,
+    created_by: user.sub,
+    group_code: groupCode,
+  }));
+
+  const { data, error } = await db.from("reservations").insert(rows).select();
 
   if (error) return c.json({ success: false, error: error.message }, 400);
-  await logAudit(db, user, "reservation.create", "reservation", data.id, {
-    confirmation_code: data.confirmation_code,
-    total_amount: data.total_amount,
+  const created = data ?? [];
+
+  if (reservationData.voucher_id) {
+    const { data: v } = await db
+      .from("vouchers")
+      .select("used_count")
+      .eq("id", reservationData.voucher_id)
+      .maybeSingle();
+    if (v) {
+      await db
+        .from("vouchers")
+        .update({ used_count: (v.used_count ?? 0) + rooms_count })
+        .eq("id", reservationData.voucher_id);
+    }
+  }
+
+  await logAudit(db, user, "reservation.create", "reservation", created[0]?.id ?? null, {
+    confirmation_code: created[0]?.confirmation_code,
+    total_amount: reservationData.total_amount,
+    rooms_count,
+    group_code: groupCode,
   });
-  return c.json({ success: true, data }, 201);
+
+  return c.json(
+    {
+      success: true,
+      data:
+        rooms_count === 1
+          ? created[0]
+          : { group_code: groupCode, count: created.length, reservations: created },
+    },
+    201,
+  );
 });
 
 reservations.put("/:id", async (c) => {
@@ -380,10 +483,30 @@ reservations.post("/:id/no-show", async (c) => {
       400,
     );
   }
+
+  // Forfeit deposit: keep received deposits as the folio total, so the booking
+  // settles as fully paid with the forfeited amount recognised as revenue.
+  let forfeited = 0;
+  if (parsed.data.forfeit_deposit) {
+    const { data: pays } = await db
+      .from("payments")
+      .select("amount, kind")
+      .eq("reservation_id", id);
+    forfeited = ((pays ?? []) as Array<{ amount: number; kind: string }>).reduce(
+      (s, p) => s + (p.kind === "refund" ? -p.amount : p.amount),
+      0,
+    );
+    if (forfeited > 0) {
+      await db.from("reservations").update({ total_amount: forfeited }).eq("id", id);
+    }
+  }
+
   await logAudit(db, c.get("user"), "reservation.no_show", "reservation", id, {
     note: parsed.data.note ?? null,
+    forfeit_deposit: parsed.data.forfeit_deposit,
+    forfeited_amount: forfeited,
   });
-  return c.json({ success: true, data });
+  return c.json({ success: true, data: { ...data, forfeited_amount: forfeited } });
 });
 
 // Move to another room mid-stay (đổi phòng), with audit trail.

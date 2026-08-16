@@ -5,6 +5,7 @@ import { formatDate, formatDateTime, formatVnd, todayIso } from "../lib/format";
 import { printReservationReceipt } from "../lib/print";
 import type {
   BookingType,
+  Company,
   Guest,
   Payment,
   PaymentKind,
@@ -22,6 +23,12 @@ interface PriceBreakdown {
   base: number;
   surcharge: number;
   total: number;
+  discount: number;
+  vat_rate: number;
+  tax_amount: number;
+  grand_total: number;
+  voucher_id: string | null;
+  voucher_error: string | null;
   details: { nights: number; hours: number; weekend_nights: number; applied_rate: string };
 }
 interface QuoteResponse {
@@ -286,8 +293,11 @@ function ReservationDrawer({
   });
 
   const noShow = useMutation({
-    mutationFn: () =>
-      apiFetch(`/api/reservations/${reservation.id}/no-show`, { method: "POST", body: {} }),
+    mutationFn: (forfeit: boolean) =>
+      apiFetch(`/api/reservations/${reservation.id}/no-show`, {
+        method: "POST",
+        body: { forfeit_deposit: forfeit },
+      }),
     onSuccess: () => {
       onMutated();
       onClose();
@@ -458,7 +468,13 @@ function ReservationDrawer({
               <button
                 className="btn btn-ghost"
                 disabled={busy}
-                onClick={() => noShow.mutate()}
+                onClick={() =>
+                  noShow.mutate(
+                    window.confirm(
+                      "Giữ tiền cọc đã thu làm doanh thu?\nOK = giữ cọc · Cancel = không giữ",
+                    ),
+                  )
+                }
                 title="Khách không đến nhận phòng"
               >
                 Không đến
@@ -566,6 +582,9 @@ function CreateReservationModal({
   const [durationHours, setDurationHours] = useState("3");
   const [adults, setAdults] = useState("2");
   const [children, setChildren] = useState("0");
+  const [roomsCount, setRoomsCount] = useState("1");
+  const [voucherCode, setVoucherCode] = useState("");
+  const [companyId, setCompanyId] = useState("");
   const [guestName, setGuestName] = useState("");
   const [guestPhone, setGuestPhone] = useState("");
   const [notes, setNotes] = useState("");
@@ -574,6 +593,10 @@ function CreateReservationModal({
   const types = useQuery({
     queryKey: ["roomTypes"],
     queryFn: () => apiFetch<RoomType[]>("/api/rooms/types"),
+  });
+  const companies = useQuery({
+    queryKey: ["companies"],
+    queryFn: () => apiFetch<Company[]>("/api/companies"),
   });
 
   const effectiveCheckOut = bookingType === "overnight" ? checkOut : checkIn;
@@ -587,6 +610,7 @@ function CreateReservationModal({
       checkIn,
       effectiveCheckOut,
       bookingType === "hourly" ? durationHours : null,
+      voucherCode,
     ],
     queryFn: () =>
       apiFetch<QuoteResponse>("/api/reservations/quote", {
@@ -596,6 +620,7 @@ function CreateReservationModal({
           check_in: checkIn,
           check_out: effectiveCheckOut,
           duration_hours: bookingType === "hourly" ? durationHours : undefined,
+          voucher_code: voucherCode.trim() || undefined,
         },
       }),
     enabled: canQuote,
@@ -612,6 +637,7 @@ function CreateReservationModal({
           name: guestName || "Khách",
         },
       });
+      const b = quote.data.breakdown;
       const body = {
         guest_id: guest.id,
         room_type_id: roomTypeId,
@@ -621,9 +647,14 @@ function CreateReservationModal({
         duration_hours: bookingType === "hourly" ? Number(durationHours) : undefined,
         adults: Number(adults) || 1,
         children: Number(children) || 0,
-        base_amount: quote.data.breakdown.base,
-        surcharge: quote.data.breakdown.surcharge,
-        total_amount: quote.data.breakdown.total,
+        base_amount: b.base,
+        surcharge: b.surcharge,
+        discount_amount: b.discount,
+        tax_amount: b.tax_amount,
+        total_amount: b.grand_total,
+        rooms_count: Math.max(1, Number(roomsCount) || 1),
+        voucher_id: b.voucher_id ?? undefined,
+        company_id: companyId || undefined,
         notes: notes || undefined,
       };
       return apiFetch<Reservation>("/api/reservations", { method: "POST", body });
@@ -751,6 +782,42 @@ function CreateReservationModal({
                 onChange={(e) => setChildren(e.target.value.replace(/[^0-9]/g, ""))}
               />
             </FormField>
+            <FormField label="Số phòng" style={{ width: 90 }}>
+              <input
+                type="number"
+                min={1}
+                max={10}
+                className="input"
+                value={roomsCount}
+                onChange={(e) => setRoomsCount(e.target.value.replace(/[^0-9]/g, ""))}
+                title="Đặt nhiều phòng cùng loại (đặt đoàn)"
+              />
+            </FormField>
+          </div>
+
+          <div className="row" style={{ gap: "var(--space-3)" }}>
+            <FormField label="Mã giảm giá" style={{ flex: 1 }}>
+              <input
+                className="input"
+                placeholder="Tuỳ chọn"
+                value={voucherCode}
+                onChange={(e) => setVoucherCode(e.target.value.toUpperCase())}
+              />
+            </FormField>
+            <FormField label="Công ty (công nợ)" style={{ flex: 1 }}>
+              <select
+                className="input"
+                value={companyId}
+                onChange={(e) => setCompanyId(e.target.value)}
+              >
+                <option value="">Khách lẻ</option>
+                {(companies.data ?? []).map((co) => (
+                  <option key={co.id} value={co.id}>
+                    {co.name}
+                  </option>
+                ))}
+              </select>
+            </FormField>
           </div>
 
           <FormField label="Tên khách">
@@ -800,16 +867,33 @@ function CreateReservationModal({
                 </div>
                 {quote.data.breakdown.surcharge > 0 ? (
                   <div className="row" style={{ justifyContent: "space-between" }}>
-                    <span>Phụ thu cuối tuần</span>
+                    <span>Phụ thu</span>
                     <span>{formatVnd(quote.data.breakdown.surcharge)}</span>
+                  </div>
+                ) : null}
+                {quote.data.breakdown.voucher_error ? (
+                  <div style={{ color: "var(--color-danger)", fontSize: 12 }}>
+                    {quote.data.breakdown.voucher_error}
+                  </div>
+                ) : null}
+                {quote.data.breakdown.discount > 0 ? (
+                  <div className="row" style={{ justifyContent: "space-between", color: "var(--color-accent)" }}>
+                    <span>Giảm giá</span>
+                    <span>-{formatVnd(quote.data.breakdown.discount)}</span>
+                  </div>
+                ) : null}
+                {quote.data.breakdown.tax_amount > 0 ? (
+                  <div className="row" style={{ justifyContent: "space-between" }}>
+                    <span>VAT {quote.data.breakdown.vat_rate}%</span>
+                    <span>{formatVnd(quote.data.breakdown.tax_amount)}</span>
                   </div>
                 ) : null}
                 <div
                   className="row"
                   style={{ justifyContent: "space-between", fontWeight: 600, marginTop: 4 }}
                 >
-                  <span>Tổng</span>
-                  <span>{formatVnd(quote.data.breakdown.total)}</span>
+                  <span>Tổng{Number(roomsCount) > 1 ? ` (mỗi phòng × ${roomsCount})` : ""}</span>
+                  <span>{formatVnd(quote.data.breakdown.grand_total)}</span>
                 </div>
               </div>
             ) : null}
@@ -883,6 +967,19 @@ function PaymentSection({
   const [kind, setKind] = useState<PaymentKind>("payment");
   const [note, setNote] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [qr, setQr] = useState<{ url: string; amount: number } | null>(null);
+
+  async function showQr() {
+    try {
+      const data = await apiFetch<{ url: string; amount: number }>("/api/payments/vietqr", {
+        query: { reservation_id: reservationId },
+      });
+      setQr(data);
+      setError(null);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Lỗi tạo QR");
+    }
+  }
 
   const create = useMutation({
     mutationFn: () =>
@@ -1041,9 +1138,52 @@ function PaymentSection({
         <button className="btn btn-primary" type="submit" disabled={!canSubmit}>
           + Thêm
         </button>
+        <button
+          className="btn btn-ghost"
+          type="button"
+          onClick={showQr}
+          disabled={remaining <= 0}
+          title="QR chuyển khoản VietQR cho số tiền còn lại"
+        >
+          📲 QR CK
+        </button>
       </form>
       {error ? (
         <div style={{ color: "var(--color-danger)", fontSize: 12, marginTop: 6 }}>{error}</div>
+      ) : null}
+
+      {qr ? (
+        <div
+          onClick={() => setQr(null)}
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "oklch(0% 0 0 / 0.5)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 90,
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              background: "var(--color-surface)",
+              borderRadius: "var(--radius-lg)",
+              padding: "var(--space-4)",
+              textAlign: "center",
+              maxWidth: 360,
+            }}
+          >
+            <div style={{ fontWeight: 600, marginBottom: 8 }}>
+              Quét để chuyển khoản {formatVnd(qr.amount)}
+            </div>
+            <img src={qr.url} alt="VietQR" style={{ width: "100%", borderRadius: 8 }} />
+            <button className="btn btn-ghost" style={{ marginTop: 8 }} onClick={() => setQr(null)}>
+              Đóng
+            </button>
+          </div>
+        </div>
       ) : null}
     </section>
   );

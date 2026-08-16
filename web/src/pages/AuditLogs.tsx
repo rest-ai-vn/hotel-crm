@@ -44,6 +44,12 @@ const ACTION_LABEL: Record<string, string> = {
   "staff.change_password": "Đổi mật khẩu",
   "property.create": "Tạo cơ sở",
   "property.update": "Sửa cơ sở",
+  "voucher.create": "Tạo voucher",
+  "voucher.update": "Sửa voucher",
+  "company.create": "Tạo công ty",
+  "company.update": "Sửa công ty",
+  "work_order.create": "Tạo phiếu bảo trì",
+  "work_order.update": "Cập nhật phiếu bảo trì",
 };
 
 export function AuditLogs() {

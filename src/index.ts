@@ -17,6 +17,9 @@ import nightAudit from "./api/night-audit";
 import auditLogs from "./api/audit-logs";
 import rateOverrides from "./api/rate-overrides";
 import properties from "./api/properties";
+import vouchers from "./api/vouchers";
+import companies from "./api/companies";
+import workOrders from "./api/work-orders";
 import { requireAuth, requireRole } from "./middleware/auth";
 
 const app = new Hono();
@@ -40,6 +43,8 @@ protectedApi.route("/services", services);
 protectedApi.route("/cashbook", cashbook);
 protectedApi.route("/reports", reports);
 protectedApi.route("/shifts", shifts);
+protectedApi.route("/companies", companies);
+protectedApi.route("/work-orders", workOrders);
 
 const adminApi = new Hono();
 adminApi.use("*", requireRole("admin", "manager"));
@@ -48,6 +53,7 @@ adminApi.route("/rate-overrides", rateOverrides);
 adminApi.route("/night-audit", nightAudit);
 adminApi.route("/audit-logs", auditLogs);
 adminApi.route("/properties", properties);
+adminApi.route("/vouchers", vouchers);
 protectedApi.route("/", adminApi);
 
 app.route("/api", protectedApi);

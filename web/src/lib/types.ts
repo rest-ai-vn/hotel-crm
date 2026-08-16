@@ -156,6 +156,9 @@ export interface Reservation {
   total_amount: number;
   payment_status: PaymentStatus;
   services_total?: number;
+  group_code?: string | null;
+  voucher_id?: string | null;
+  company_id?: string | null;
   notes: string | null;
   internal_notes: string | null;
   confirmation_code: string;
@@ -200,6 +203,66 @@ export interface Property {
   phone: string | null;
   is_active: boolean;
   created_at: string;
+  vat_rate?: number;
+  bank_id?: string | null;
+  bank_account_no?: string | null;
+  bank_account_name?: string | null;
+}
+
+export interface Voucher {
+  id: string;
+  code: string;
+  kind: "percent" | "fixed";
+  value: number;
+  valid_from: string;
+  valid_to: string | null;
+  max_uses: number | null;
+  used_count: number;
+  is_active: boolean;
+  created_at: string;
+}
+
+export interface Company {
+  id: string;
+  name: string;
+  tax_code: string | null;
+  contact_name: string | null;
+  phone: string | null;
+  email: string | null;
+  note: string | null;
+  is_active: boolean;
+}
+
+export type WorkOrderStatus = "open" | "in_progress" | "done";
+
+export interface WorkOrder {
+  id: string;
+  room_id: string | null;
+  title: string;
+  note: string | null;
+  status: WorkOrderStatus;
+  created_at: string;
+  resolved_at: string | null;
+  rooms?: { number: string; floor: number } | null;
+  staff?: { name: string } | null;
+}
+
+export interface ReceivablesReport {
+  companies: Array<{ company_id: string; company_name: string; count: number; outstanding: number }>;
+  details: Array<{
+    reservation_id: string;
+    confirmation_code: string;
+    check_in: string;
+    company_name: string;
+    outstanding: number;
+  }>;
+}
+
+export interface ChainReport {
+  from: string;
+  to: string;
+  total: number;
+  rows: BreakdownRow[];
 }
 
 // ── Shifts (giao ca) ──

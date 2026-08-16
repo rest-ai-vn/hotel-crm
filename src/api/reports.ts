@@ -181,6 +181,129 @@ reports.get("/breakdown", async (c) => {
   return c.json({ success: true, data: { by, from, to, rows } });
 });
 
+// ── Receivables (công nợ theo công ty) ──
+reports.get("/receivables", async (c) => {
+  const db = getServerDb();
+  const pid = c.get("user").property_id;
+
+  const { data, error } = await db
+    .from("reservations")
+    .select("id, confirmation_code, check_in, total_amount, services_total, company_id, companies(name)")
+    .eq("property_id", pid)
+    .not("company_id", "is", null)
+    .in("status", REVENUE_STATUSES as unknown as string[])
+    .in("payment_status", ["pending", "partial"]);
+  if (error) return c.json({ success: false, error: error.message }, 500);
+
+  const rows = (data ?? []) as unknown as Array<{
+    id: string;
+    confirmation_code: string;
+    check_in: string;
+    total_amount: number;
+    services_total: number;
+    company_id: string;
+    companies: { name: string } | null;
+  }>;
+
+  // Paid per reservation to compute the outstanding balance.
+  const ids = rows.map((r) => r.id);
+  const paidById = new Map<string, number>();
+  if (ids.length > 0) {
+    const { data: pays } = await db
+      .from("payments")
+      .select("reservation_id, amount, kind")
+      .in("reservation_id", ids);
+    for (const p of (pays ?? []) as Array<{ reservation_id: string; amount: number; kind: string }>) {
+      const signed = p.kind === "refund" ? -p.amount : p.amount;
+      paidById.set(p.reservation_id, (paidById.get(p.reservation_id) ?? 0) + signed);
+    }
+  }
+
+  const byCompany = new Map<
+    string,
+    { company_id: string; company_name: string; count: number; outstanding: number }
+  >();
+  const details = rows.map((r) => {
+    const folio = (r.total_amount ?? 0) + (r.services_total ?? 0);
+    const outstanding = Math.max(0, folio - (paidById.get(r.id) ?? 0));
+    const key = r.company_id;
+    const existing = byCompany.get(key);
+    if (existing) {
+      byCompany.set(key, {
+        ...existing,
+        count: existing.count + 1,
+        outstanding: existing.outstanding + outstanding,
+      });
+    } else {
+      byCompany.set(key, {
+        company_id: key,
+        company_name: r.companies?.name ?? "(không rõ)",
+        count: 1,
+        outstanding,
+      });
+    }
+    return {
+      reservation_id: r.id,
+      confirmation_code: r.confirmation_code,
+      check_in: r.check_in,
+      company_name: r.companies?.name ?? "(không rõ)",
+      outstanding,
+    };
+  });
+
+  return c.json({
+    success: true,
+    data: {
+      companies: [...byCompany.values()].sort((a, b) => b.outstanding - a.outstanding),
+      details: details.filter((d) => d.outstanding > 0),
+    },
+  });
+});
+
+// ── Chain summary (gộp toàn chuỗi — admin) ──
+reports.get("/chain", async (c) => {
+  const user = c.get("user");
+  if (user.role !== "admin") {
+    return c.json({ success: false, error: "Chỉ quản trị viên xem được báo cáo chuỗi" }, 403);
+  }
+  const from = c.req.query("from") || firstOfMonthIso();
+  const to = c.req.query("to") || todayIso();
+  const db = getServerDb();
+
+  const [resRes, propsRes] = await Promise.all([
+    db
+      .from("reservations")
+      .select("property_id, total_amount, services_total")
+      .gte("check_in", from)
+      .lte("check_in", to)
+      .in("status", REVENUE_STATUSES as unknown as string[]),
+    db.from("properties").select("id, name, code"),
+  ]);
+  if (resRes.error) return c.json({ success: false, error: resRes.error.message }, 500);
+
+  const nameById = new Map(
+    ((propsRes.data ?? []) as Array<{ id: string; name: string }>).map((p) => [p.id, p.name]),
+  );
+  const map = new Map<string, BreakdownRow>();
+  for (const r of (resRes.data ?? []) as Array<{
+    property_id: string;
+    total_amount: number;
+    services_total: number;
+  }>) {
+    addRow(
+      map,
+      r.property_id,
+      nameById.get(r.property_id) ?? "(không rõ)",
+      (r.total_amount ?? 0) + (r.services_total ?? 0),
+    );
+  }
+  const rows = [...map.values()].sort((a, b) => b.amount - a.amount);
+  return c.json({
+    success: true,
+    data: { from, to, rows, total: rows.reduce((s, r) => s + r.amount, 0) },
+  });
+});
+
 // ── Residence declaration (khai báo lưu trú) ──
 reports.get("/residence", async (c) => {
   const date = c.req.query("date") || todayIso();
