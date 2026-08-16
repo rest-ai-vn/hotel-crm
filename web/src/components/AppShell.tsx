@@ -1,5 +1,7 @@
+import { useState } from "react";
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
 import { useAuth } from "../lib/auth-context";
+import { apiFetch } from "../lib/api";
 import { ChatWidget } from "./ChatWidget";
 
 type NavItem = {
@@ -29,6 +31,7 @@ const NAV_ITEMS: NavItem[] = [
 export function AppShell() {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
+  const [showPassword, setShowPassword] = useState(false);
 
   function handleLogout() {
     logout();
@@ -95,6 +98,13 @@ export function AppShell() {
           </div>
           <button
             className="btn btn-ghost"
+            onClick={() => setShowPassword(true)}
+            style={{ width: "100%", justifyContent: "flex-start" }}
+          >
+            🔑 Đổi mật khẩu
+          </button>
+          <button
+            className="btn btn-ghost"
             onClick={handleLogout}
             style={{ width: "100%", justifyContent: "flex-start" }}
           >
@@ -105,7 +115,116 @@ export function AppShell() {
       <main style={{ overflow: "auto", padding: "var(--space-6)" }}>
         <Outlet />
       </main>
+      {showPassword ? <ChangePasswordModal onClose={() => setShowPassword(false)} /> : null}
       <ChatWidget />
+    </div>
+  );
+}
+
+function ChangePasswordModal({ onClose }: { onClose: () => void }) {
+  const [current, setCurrent] = useState("");
+  const [next, setNext] = useState("");
+  const [confirm, setConfirm] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [done, setDone] = useState(false);
+
+  async function submit() {
+    if (next !== confirm) {
+      setError("Mật khẩu nhập lại không khớp");
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    try {
+      await apiFetch("/api/auth/change-password", {
+        method: "POST",
+        body: { current_password: current, new_password: next },
+      });
+      setDone(true);
+      setTimeout(onClose, 1200);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Lỗi đổi mật khẩu");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div
+      onClick={onClose}
+      style={{
+        position: "fixed",
+        inset: 0,
+        background: "oklch(0% 0 0 / 0.4)",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        zIndex: 80,
+        padding: "var(--space-4)",
+      }}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          background: "var(--color-surface)",
+          width: 380,
+          maxWidth: "100%",
+          borderRadius: "var(--radius-lg)",
+          boxShadow: "var(--shadow-md)",
+          padding: "var(--space-5)",
+        }}
+      >
+        <div className="row" style={{ justifyContent: "space-between", marginBottom: "var(--space-4)" }}>
+          <h2 style={{ margin: 0, fontSize: 18 }}>Đổi mật khẩu</h2>
+          <button className="btn btn-ghost" onClick={onClose}>✕</button>
+        </div>
+        {done ? (
+          <div style={{ color: "var(--color-accent)", fontSize: 14 }}>✓ Đã đổi mật khẩu</div>
+        ) : (
+          <form
+            className="stack"
+            style={{ gap: "var(--space-3)" }}
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (!busy) submit();
+            }}
+          >
+            <input
+              className="input"
+              type="password"
+              placeholder="Mật khẩu hiện tại"
+              autoComplete="current-password"
+              value={current}
+              onChange={(e) => setCurrent(e.target.value)}
+            />
+            <input
+              className="input"
+              type="password"
+              placeholder="Mật khẩu mới (≥8 ký tự)"
+              autoComplete="new-password"
+              value={next}
+              onChange={(e) => setNext(e.target.value)}
+            />
+            <input
+              className="input"
+              type="password"
+              placeholder="Nhập lại mật khẩu mới"
+              autoComplete="new-password"
+              value={confirm}
+              onChange={(e) => setConfirm(e.target.value)}
+            />
+            {error ? <div style={{ color: "var(--color-danger)", fontSize: 13 }}>{error}</div> : null}
+            <button
+              className="btn btn-primary"
+              type="submit"
+              disabled={busy || !current || next.length < 8 || !confirm}
+            >
+              {busy ? "Đang đổi…" : "Đổi mật khẩu"}
+            </button>
+          </form>
+        )}
+      </div>
     </div>
   );
 }

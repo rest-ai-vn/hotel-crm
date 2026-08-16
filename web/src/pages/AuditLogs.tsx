@@ -13,6 +13,8 @@ const ENTITY_OPTIONS = [
   { value: "rate_override", label: "Giá ngày lễ" },
   { value: "rate_plan", label: "Bảng giá" },
   { value: "cash_transaction", label: "Sổ quỹ" },
+  { value: "staff", label: "Nhân viên" },
+  { value: "property", label: "Cơ sở" },
 ];
 
 const ACTION_LABEL: Record<string, string> = {
@@ -37,6 +39,11 @@ const ACTION_LABEL: Record<string, string> = {
   "rate_plan.update": "Sửa bảng giá",
   "rate_plan.delete": "Xóa bảng giá",
   "cash_transaction.delete": "Xóa giao dịch quỹ",
+  "staff.create": "Tạo nhân viên",
+  "staff.update": "Cập nhật nhân viên",
+  "staff.change_password": "Đổi mật khẩu",
+  "property.create": "Tạo cơ sở",
+  "property.update": "Sửa cơ sở",
 };
 
 export function AuditLogs() {

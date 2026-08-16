@@ -2,7 +2,8 @@ import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiFetch } from "../lib/api";
 import { formatDate } from "../lib/format";
-import type { Property, StaffRole } from "../lib/types";
+import { useAuth } from "../lib/auth-context";
+import type { Property, StaffRole, StaffUser } from "../lib/types";
 
 const ROLE_LABEL: Record<StaffRole, string> = {
   admin: "Quản trị",
@@ -69,6 +70,131 @@ export function Properties() {
       )}
 
       <CreateStaffCard properties={rows} />
+
+      <StaffListCard properties={rows} />
+    </div>
+  );
+}
+
+function StaffListCard({ properties }: { properties: Property[] }) {
+  const qc = useQueryClient();
+  const { user } = useAuth();
+  const [propertyId, setPropertyId] = useState("");
+  const effectivePid = propertyId || user?.property_id || "";
+
+  const list = useQuery({
+    queryKey: ["staff-list", effectivePid],
+    queryFn: () =>
+      apiFetch<StaffUser[]>("/api/auth/staff", {
+        query: { property_id: propertyId || undefined },
+      }),
+  });
+  const [error, setError] = useState<string | null>(null);
+
+  const update = useMutation({
+    mutationFn: (input: { id: string; body: Record<string, unknown> }) =>
+      apiFetch(`/api/auth/staff/${input.id}`, { method: "PUT", body: input.body }),
+    onSuccess: () => {
+      setError(null);
+      qc.invalidateQueries({ queryKey: ["staff-list"] });
+    },
+    onError: (e) => setError(e instanceof Error ? e.message : "Lỗi"),
+  });
+
+  function resetPassword(s: StaffUser) {
+    const pw = window.prompt(`Mật khẩu mới cho ${s.email} (≥8 ký tự):`);
+    if (!pw) return;
+    if (pw.length < 8) {
+      setError("Mật khẩu tối thiểu 8 ký tự");
+      return;
+    }
+    update.mutate({ id: s.id, body: { password: pw } });
+  }
+
+  const rows = list.data ?? [];
+
+  return (
+    <div className="card" style={{ padding: "var(--space-4)" }}>
+      <div className="row" style={{ justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
+        <h2 style={{ margin: 0, fontSize: 15 }}>Nhân viên theo cơ sở</h2>
+        <select className="input" style={{ width: "auto" }} value={propertyId} onChange={(e) => setPropertyId(e.target.value)}>
+          <option value="">Cơ sở của tôi</option>
+          {properties.map((p) => (
+            <option key={p.id} value={p.id}>{p.name}</option>
+          ))}
+        </select>
+      </div>
+
+      {list.isLoading ? (
+        <div className="muted" style={{ marginTop: "var(--space-3)" }}>Đang tải…</div>
+      ) : rows.length === 0 ? (
+        <div className="muted" style={{ marginTop: "var(--space-3)", fontSize: 13 }}>
+          Cơ sở này chưa có nhân viên.
+        </div>
+      ) : (
+        <table className="table" style={{ marginTop: "var(--space-3)" }}>
+          <thead>
+            <tr>
+              <th>Họ tên</th>
+              <th>Email</th>
+              <th>Vai trò</th>
+              <th>Trạng thái</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((s) => (
+              <tr key={s.id}>
+                <td style={{ fontWeight: 500 }}>{s.name}</td>
+                <td className="muted" style={{ fontSize: 13 }}>{s.email}</td>
+                <td>
+                  <select
+                    className="input"
+                    style={{ width: "auto", fontSize: 13, padding: "4px 8px" }}
+                    value={s.role}
+                    disabled={s.id === user?.id || update.isPending}
+                    onChange={(e) => update.mutate({ id: s.id, body: { role: e.target.value } })}
+                  >
+                    {(Object.keys(ROLE_LABEL) as StaffRole[]).map((r) => (
+                      <option key={r} value={r}>{ROLE_LABEL[r]}</option>
+                    ))}
+                  </select>
+                </td>
+                <td>
+                  {s.is_active ? (
+                    <span className="pill success">Hoạt động</span>
+                  ) : (
+                    <span className="pill danger">Đã khóa</span>
+                  )}
+                </td>
+                <td>
+                  <div className="row" style={{ gap: 4, justifyContent: "flex-end" }}>
+                    <button
+                      className="btn btn-ghost"
+                      style={{ fontSize: 12, padding: "2px 8px" }}
+                      onClick={() => resetPassword(s)}
+                      disabled={update.isPending}
+                    >
+                      Đặt lại MK
+                    </button>
+                    {s.id !== user?.id ? (
+                      <button
+                        className="btn btn-ghost"
+                        style={{ fontSize: 12, padding: "2px 8px", color: s.is_active ? "var(--color-danger)" : "inherit" }}
+                        onClick={() => update.mutate({ id: s.id, body: { is_active: !s.is_active } })}
+                        disabled={update.isPending}
+                      >
+                        {s.is_active ? "Khóa" : "Mở khóa"}
+                      </button>
+                    ) : null}
+                  </div>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+      {error ? <div style={{ color: "var(--color-danger)", fontSize: 13, marginTop: 8 }}>{error}</div> : null}
     </div>
   );
 }

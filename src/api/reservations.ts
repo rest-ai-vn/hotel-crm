@@ -179,6 +179,37 @@ reservations.post("/", async (c) => {
 
   const db = getServerDb();
   const user = c.get("user");
+
+  // Overbooking guard: block when every room of this type is already taken
+  // for an overlapping date range (same inclusive day-overlap as /availability).
+  const [totalRes, bookedRes] = await Promise.all([
+    db
+      .from("rooms")
+      .select("id", { count: "exact", head: true })
+      .eq("property_id", user.property_id)
+      .eq("room_type_id", parsed.data.room_type_id)
+      .eq("is_active", true),
+    db
+      .from("reservations")
+      .select("id", { count: "exact", head: true })
+      .eq("property_id", user.property_id)
+      .eq("room_type_id", parsed.data.room_type_id)
+      .in("status", ["confirmed", "checked_in"])
+      .lte("check_in", parsed.data.check_out)
+      .gte("check_out", parsed.data.check_in),
+  ]);
+  const totalRooms = totalRes.count ?? 0;
+  const booked = bookedRes.count ?? 0;
+  if (totalRooms === 0 || booked >= totalRooms) {
+    return c.json(
+      {
+        success: false,
+        error: `Hết phòng loại này trong khoảng ngày đã chọn (${booked}/${totalRooms} đã đặt)`,
+      },
+      409,
+    );
+  }
+
   const { data, error } = await db
     .from("reservations")
     .insert({ ...parsed.data, property_id: user.property_id, created_by: user.sub })
