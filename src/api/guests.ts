@@ -15,7 +15,10 @@ guests.get("/", async (c) => {
   const limit = Math.min(Number(c.req.query("limit") || 50), 200);
   const offset = Math.max(Number(c.req.query("offset") || 0), 0);
 
-  let query = db.from("guests").select("*", { count: "exact" });
+  let query = db
+    .from("guests")
+    .select("*", { count: "exact" })
+    .eq("property_id", c.get("user").property_id);
   if (search) {
     const safe = search.replace(/[%,]/g, "");
     query = query.or(`name.ilike.%${safe}%,phone.ilike.%${safe}%,zalo_id.eq.${safe}`);
@@ -32,7 +35,12 @@ guests.get("/", async (c) => {
 guests.get("/:id", async (c) => {
   const id = c.req.param("id");
   const db = getServerDb();
-  const { data, error } = await db.from("guests").select("*").eq("id", id).maybeSingle();
+  const { data, error } = await db
+    .from("guests")
+    .select("*")
+    .eq("id", id)
+    .eq("property_id", c.get("user").property_id)
+    .maybeSingle();
 
   if (error) return c.json({ success: false, error: error.message }, 500);
   if (!data) return c.json({ success: false, error: "Guest not found" }, 404);
@@ -44,7 +52,11 @@ guests.post("/", async (c) => {
   if (!parsed.ok) return parsed.response;
 
   const db = getServerDb();
-  const { data, error } = await db.from("guests").insert(parsed.data).select().single();
+  const { data, error } = await db
+    .from("guests")
+    .insert({ ...parsed.data, property_id: c.get("user").property_id })
+    .select()
+    .single();
 
   if (error) return c.json({ success: false, error: error.message }, 400);
   return c.json({ success: true, data }, 201);
@@ -60,6 +72,7 @@ guests.put("/:id", async (c) => {
     .from("guests")
     .update(parsed.data)
     .eq("id", id)
+    .eq("property_id", c.get("user").property_id)
     .select()
     .single();
 
@@ -72,21 +85,33 @@ guests.post("/find-or-create", async (c) => {
   if (!parsed.ok) return parsed.response;
   const { phone, zalo_id, facebook_id, name } = parsed.data;
   const db = getServerDb();
+  const pid = c.get("user").property_id;
 
   if (zalo_id) {
-    const { data } = await db.from("guests").select("*").eq("zalo_id", zalo_id).maybeSingle();
+    const { data } = await db
+      .from("guests")
+      .select("*")
+      .eq("property_id", pid)
+      .eq("zalo_id", zalo_id)
+      .maybeSingle();
     if (data) return c.json({ success: true, data, created: false });
   }
   if (facebook_id) {
     const { data } = await db
       .from("guests")
       .select("*")
+      .eq("property_id", pid)
       .eq("facebook_id", facebook_id)
       .maybeSingle();
     if (data) return c.json({ success: true, data, created: false });
   }
   if (phone) {
-    const { data } = await db.from("guests").select("*").eq("phone", phone).maybeSingle();
+    const { data } = await db
+      .from("guests")
+      .select("*")
+      .eq("property_id", pid)
+      .eq("phone", phone)
+      .maybeSingle();
     if (data) {
       const patch: Record<string, string> = {};
       if (zalo_id && !data.zalo_id) patch.zalo_id = zalo_id;
@@ -100,7 +125,7 @@ guests.post("/find-or-create", async (c) => {
 
   const { data, error } = await db
     .from("guests")
-    .insert({ name: name || "Khách", phone, zalo_id, facebook_id })
+    .insert({ name: name || "Khách", phone, zalo_id, facebook_id, property_id: pid })
     .select()
     .single();
 

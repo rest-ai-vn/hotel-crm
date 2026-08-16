@@ -15,6 +15,7 @@ rooms.get("/types", async (c) => {
   const { data, error } = await db
     .from("room_types")
     .select("*")
+    .eq("property_id", c.get("user").property_id)
     .eq("is_active", true)
     .order("sort_order");
 
@@ -27,7 +28,11 @@ rooms.post("/types", async (c) => {
   if (!parsed.ok) return parsed.response;
 
   const db = getServerDb();
-  const { data, error } = await db.from("room_types").insert(parsed.data).select().single();
+  const { data, error } = await db
+    .from("room_types")
+    .insert({ ...parsed.data, property_id: c.get("user").property_id })
+    .select()
+    .single();
 
   if (error) return c.json({ success: false, error: error.message }, 400);
   return c.json({ success: true, data }, 201);
@@ -43,6 +48,7 @@ rooms.put("/types/:id", async (c) => {
     .from("room_types")
     .update(parsed.data)
     .eq("id", id)
+    .eq("property_id", c.get("user").property_id)
     .select()
     .single();
 
@@ -56,7 +62,11 @@ rooms.get("/", async (c) => {
   const status = c.req.query("status");
   const typeId = c.req.query("type_id");
 
-  let query = db.from("rooms").select("*, room_types(name, code)").eq("is_active", true);
+  let query = db
+    .from("rooms")
+    .select("*, room_types(name, code)")
+    .eq("property_id", c.get("user").property_id)
+    .eq("is_active", true);
   if (floor && /^\d+$/.test(floor)) query = query.eq("floor", Number(floor));
   if (status) query = query.eq("status", status);
   if (typeId) query = query.eq("room_type_id", typeId);
@@ -71,7 +81,11 @@ rooms.post("/", async (c) => {
   if (!parsed.ok) return parsed.response;
 
   const db = getServerDb();
-  const { data, error } = await db.from("rooms").insert(parsed.data).select().single();
+  const { data, error } = await db
+    .from("rooms")
+    .insert({ ...parsed.data, property_id: c.get("user").property_id })
+    .select()
+    .single();
 
   if (error) return c.json({ success: false, error: error.message }, 400);
   return c.json({ success: true, data }, 201);
@@ -91,6 +105,7 @@ rooms.patch("/:id/status", async (c) => {
     .from("rooms")
     .update(update)
     .eq("id", id)
+    .eq("property_id", c.get("user").property_id)
     .select()
     .single();
 

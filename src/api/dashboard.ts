@@ -30,14 +30,16 @@ interface ReservationRow {
 dashboard.get("/summary", async (c) => {
   const db = getServerDb();
   const today = todayIso();
+  const pid = c.get("user").property_id;
 
   const [roomsRes, arrivalsRes, departuresRes, inhouseRes] = await Promise.all([
-    db.from("rooms").select("id, status").eq("is_active", true),
+    db.from("rooms").select("id, status").eq("property_id", pid).eq("is_active", true),
     db
       .from("reservations")
       .select(
         "id, status, check_in, check_out, total_amount, room_id, confirmation_code, guests(name, phone), room_types(name, code), rooms(number, floor)",
       )
+      .eq("property_id", pid)
       .eq("check_in", today)
       .in("status", ACTIVE_STATUSES as unknown as string[])
       .order("check_in_time", { ascending: true }),
@@ -46,12 +48,14 @@ dashboard.get("/summary", async (c) => {
       .select(
         "id, status, check_in, check_out, total_amount, room_id, confirmation_code, guests(name, phone), room_types(name, code), rooms(number, floor)",
       )
+      .eq("property_id", pid)
       .eq("check_out", today)
       .in("status", ["checked_in", "checked_out"])
       .order("check_out_time", { ascending: true }),
     db
       .from("reservations")
       .select("id", { count: "exact", head: true })
+      .eq("property_id", pid)
       .eq("status", "checked_in"),
   ]);
 

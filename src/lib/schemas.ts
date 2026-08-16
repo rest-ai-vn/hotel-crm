@@ -173,7 +173,100 @@ export const paymentCreateSchema = z.object({
   reservation_id: uuid,
   amount: z.number().int().min(1).max(2_000_000_000),
   method: z.enum(["cash", "card", "transfer", "vietqr"]).default("cash"),
+  kind: z.enum(["payment", "deposit", "refund"]).default("payment"),
   note: z.string().max(500).optional(),
+});
+
+// ── Shifts (giao ca) ──
+export const shiftOpenSchema = z.object({
+  opening_cash: intMoney.default(0),
+  note: z.string().max(1000).optional(),
+});
+export const shiftCloseSchema = z.object({
+  counted_cash: intMoney,
+  note: z.string().max(1000).optional(),
+});
+
+// ── Night audit (chốt ngày) ──
+export const nightAuditRunSchema = z.object({
+  business_date: isoDate.optional(),
+  note: z.string().max(1000).optional(),
+});
+
+// ── Rate overrides (giá ngày lễ) ──
+export const rateOverrideCreateSchema = z
+  .object({
+    name: nonEmpty,
+    date: isoDate,
+    room_type_id: uuid.nullable().optional(),
+    surcharge_pct: z.number().int().min(0).max(200).default(0),
+    fixed_hourly: z.number().int().min(0).max(100_000_000).nullable().optional(),
+    fixed_overnight: z.number().int().min(0).max(100_000_000).nullable().optional(),
+    fixed_daytime: z.number().int().min(0).max(100_000_000).nullable().optional(),
+    is_active: z.boolean().default(true),
+  })
+  .refine(
+    (d) =>
+      d.surcharge_pct > 0 ||
+      d.fixed_hourly != null ||
+      d.fixed_overnight != null ||
+      d.fixed_daytime != null,
+    { message: "Cần nhập phụ thu % hoặc ít nhất một giá cố định", path: ["surcharge_pct"] },
+  );
+export const rateOverrideUpdateSchema = z.object({
+  name: nonEmpty.optional(),
+  date: isoDate.optional(),
+  room_type_id: uuid.nullable().optional(),
+  surcharge_pct: z.number().int().min(0).max(200).optional(),
+  fixed_hourly: z.number().int().min(0).max(100_000_000).nullable().optional(),
+  fixed_overnight: z.number().int().min(0).max(100_000_000).nullable().optional(),
+  fixed_daytime: z.number().int().min(0).max(100_000_000).nullable().optional(),
+  is_active: z.boolean().optional(),
+});
+
+// ── Reservation ops: move room / extend / no-show ──
+export const reservationMoveRoomSchema = z.object({
+  room_id: uuid,
+  reason: z.string().max(500).optional(),
+});
+export const reservationExtendSchema = z.object({
+  check_out: isoDate,
+  check_out_time: time24.optional(),
+  extra_amount: intMoney.default(0),
+  note: z.string().max(500).optional(),
+});
+export const reservationNoShowSchema = z.object({
+  note: z.string().max(500).optional(),
+});
+
+// ── POS / Additional services ──
+export const serviceCreateSchema = z.object({
+  name: nonEmpty,
+  category: z.string().min(1).max(50).default("other"),
+  price: intMoney,
+  unit: z.string().min(1).max(50).default("lần"),
+  sort_order: z.number().int().min(0).max(9999).optional(),
+});
+export const serviceUpdateSchema = serviceCreateSchema.partial().extend({
+  is_active: z.boolean().optional(),
+});
+export const serviceChargeSchema = z.object({
+  reservation_id: uuid,
+  service_id: uuid.optional(),
+  name: nonEmpty,
+  unit_price: intMoney,
+  quantity: z.number().int().min(1).max(1000).default(1),
+  note: z.string().max(500).optional(),
+});
+
+// ── Cash book ──
+export const cashTxnCreateSchema = z.object({
+  direction: z.enum(["income", "expense"]),
+  category: z.string().min(1).max(50).default("other"),
+  amount: z.number().int().min(1).max(2_000_000_000),
+  note: z.string().max(500).optional(),
+  occurred_on: isoDate.optional(),
+  reservation_id: uuid.optional(),
 });
 
 export type GuestCreate = z.infer<typeof guestCreateSchema>;

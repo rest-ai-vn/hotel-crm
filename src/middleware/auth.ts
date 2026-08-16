@@ -17,6 +17,10 @@ export async function requireAuth(c: Context, next: Next) {
   }
   try {
     const payload = await verifyStaffToken(token);
+    if (!payload.property_id) {
+      // Pre-multi-tenant token: force re-login so the tenant claim is present.
+      return c.json({ success: false, error: "Phiên cũ đã hết hạn, vui lòng đăng nhập lại" }, 401);
+    }
     c.set("user", payload);
     await next();
   } catch {

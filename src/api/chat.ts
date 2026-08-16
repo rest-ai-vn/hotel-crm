@@ -25,24 +25,34 @@ function todayIso(): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
-async function buildHotelContext(): Promise<string> {
+async function buildHotelContext(propertyId: string): Promise<string> {
   const db = getServerDb();
   const today = todayIso();
 
   const [roomsRes, typesRes, arrivalsRes, departuresRes, inhouseRes] = await Promise.all([
-    db.from("rooms").select("status").eq("is_active", true),
-    db.from("room_types").select("code, name, max_guests").eq("is_active", true),
+    db.from("rooms").select("status").eq("property_id", propertyId).eq("is_active", true),
+    db
+      .from("room_types")
+      .select("code, name, max_guests")
+      .eq("property_id", propertyId)
+      .eq("is_active", true),
     db
       .from("reservations")
       .select("confirmation_code, check_in, room_types(code), guests(name)")
+      .eq("property_id", propertyId)
       .eq("check_in", today)
       .in("status", ["confirmed", "checked_in"]),
     db
       .from("reservations")
       .select("confirmation_code, room_types(code), guests(name)")
+      .eq("property_id", propertyId)
       .eq("check_out", today)
       .in("status", ["checked_in", "checked_out"]),
-    db.from("reservations").select("id", { count: "exact", head: true }).eq("status", "checked_in"),
+    db
+      .from("reservations")
+      .select("id", { count: "exact", head: true })
+      .eq("property_id", propertyId)
+      .eq("status", "checked_in"),
   ]);
 
   const rooms = roomsRes.data ?? [];
@@ -102,7 +112,7 @@ chat.post("/", async (c) => {
   const parsed = await parseBody(c, chatRequestSchema);
   if (!parsed.ok) return parsed.response;
 
-  const system = await buildHotelContext();
+  const system = await buildHotelContext(c.get("user").property_id);
 
   // Map sang định dạng Gemini: role "assistant" → "model", text vào parts[]
   const contents = parsed.data.messages.map((m) => ({

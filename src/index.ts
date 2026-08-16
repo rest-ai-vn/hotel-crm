@@ -9,6 +9,14 @@ import dashboard from "./api/dashboard";
 import chat from "./api/chat";
 import payments from "./api/payments";
 import ratePlans from "./api/rate-plans";
+import services from "./api/services";
+import cashbook from "./api/cashbook";
+import reports from "./api/reports";
+import shifts from "./api/shifts";
+import nightAudit from "./api/night-audit";
+import auditLogs from "./api/audit-logs";
+import rateOverrides from "./api/rate-overrides";
+import properties from "./api/properties";
 import { requireAuth, requireRole } from "./middleware/auth";
 
 const app = new Hono();
@@ -28,10 +36,18 @@ protectedApi.route("/reservations", reservations);
 protectedApi.route("/dashboard", dashboard);
 protectedApi.route("/chat", chat);
 protectedApi.route("/payments", payments);
+protectedApi.route("/services", services);
+protectedApi.route("/cashbook", cashbook);
+protectedApi.route("/reports", reports);
+protectedApi.route("/shifts", shifts);
 
 const adminApi = new Hono();
 adminApi.use("*", requireRole("admin", "manager"));
 adminApi.route("/rate-plans", ratePlans);
+adminApi.route("/rate-overrides", rateOverrides);
+adminApi.route("/night-audit", nightAudit);
+adminApi.route("/audit-logs", auditLogs);
+adminApi.route("/properties", properties);
 protectedApi.route("/", adminApi);
 
 app.route("/api", protectedApi);

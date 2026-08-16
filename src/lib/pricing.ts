@@ -139,6 +139,126 @@ export function calculatePrice(plan: RatePlan, query: PriceQuery): PriceBreakdow
   };
 }
 
+// ── Rate overrides (giá ngày lễ / sự kiện) ──────────
+export interface RateOverride {
+  date: string; // YYYY-MM-DD
+  room_type_id: string | null;
+  surcharge_pct: number;
+  fixed_hourly: number | null;
+  fixed_overnight: number | null;
+  fixed_daytime: number | null;
+  name?: string;
+  is_active?: boolean;
+}
+
+export interface PriceBreakdownWithOverrides extends PriceBreakdown {
+  override_surcharge: number;
+  applied_overrides: string[];
+}
+
+function isoAddDays(iso: string, days: number): string {
+  const d = new Date(parseDate(iso).getTime() + days * 86_400_000);
+  return d.toISOString().slice(0, 10);
+}
+
+function findOverride(
+  overrides: ReadonlyArray<RateOverride>,
+  date: string,
+): RateOverride | undefined {
+  return overrides.find((o) => o.is_active !== false && o.date === date);
+}
+
+/**
+ * Price with per-date overrides. A fixed_* rate replaces the plan's base rate
+ * for that date; surcharge_pct adds on top of the (possibly replaced) rate.
+ * Weekend surcharge from the plan still applies for overnight/daytime.
+ */
+export function calculatePriceWithOverrides(
+  plan: RatePlan,
+  query: PriceQuery,
+  overrides: ReadonlyArray<RateOverride>,
+): PriceBreakdownWithOverrides {
+  const applied: string[] = [];
+
+  if (plan.booking_type === "hourly") {
+    if (plan.hourly_rate === null) throw new Error("Hourly rate plan missing hourly_rate");
+    const o = findOverride(overrides, query.check_in);
+    const firstRate = o?.fixed_hourly ?? plan.hourly_rate;
+    const hours = Math.max(query.duration_hours ?? plan.min_hours, plan.min_hours);
+    const extraHours = Math.max(0, hours - plan.min_hours);
+    const extraRate = plan.extra_hour_rate ?? plan.hourly_rate;
+    const base = firstRate * plan.min_hours + extraRate * extraHours;
+    const overrideSurcharge = o && o.surcharge_pct > 0 ? Math.round((base * o.surcharge_pct) / 100) : 0;
+    if (o && (o.fixed_hourly !== null || o.surcharge_pct > 0) && o.name) applied.push(o.name);
+    return {
+      base,
+      surcharge: overrideSurcharge,
+      total: base + overrideSurcharge,
+      override_surcharge: overrideSurcharge,
+      applied_overrides: applied,
+      details: { nights: 0, hours, weekend_nights: 0, applied_rate: "hourly_rate" },
+    };
+  }
+
+  if (plan.booking_type === "daytime") {
+    if (plan.daytime_rate === null) throw new Error("Daytime rate plan missing daytime_rate");
+    const o = findOverride(overrides, query.check_in);
+    const rate = o?.fixed_daytime ?? plan.daytime_rate;
+    const isWeekend = isWeekendUTC(parseDate(query.check_in));
+    const weekendSurcharge = applyWeekendSurcharge(rate, isWeekend ? 1 : 0, plan.weekend_surcharge_pct);
+    const overrideSurcharge = o && o.surcharge_pct > 0 ? Math.round((rate * o.surcharge_pct) / 100) : 0;
+    if (o && (o.fixed_daytime !== null || o.surcharge_pct > 0) && o.name) applied.push(o.name);
+    return {
+      base: rate,
+      surcharge: weekendSurcharge + overrideSurcharge,
+      total: rate + weekendSurcharge + overrideSurcharge,
+      override_surcharge: overrideSurcharge,
+      applied_overrides: applied,
+      details: {
+        nights: 0,
+        hours: 0,
+        weekend_nights: isWeekend ? 1 : 0,
+        applied_rate: "daytime_rate",
+      },
+    };
+  }
+
+  if (plan.overnight_rate === null) throw new Error("Overnight rate plan missing overnight_rate");
+  const checkIn = parseDate(query.check_in);
+  const checkOut = parseDate(query.check_out);
+  const nights = Math.max(1, daysBetween(checkIn, checkOut));
+
+  let base = 0;
+  let weekendSurcharge = 0;
+  let overrideSurcharge = 0;
+  let weekendNights = 0;
+  for (let i = 0; i < nights; i++) {
+    const nightDate = isoAddDays(query.check_in, i);
+    const o = findOverride(overrides, nightDate);
+    const rate = o?.fixed_overnight ?? plan.overnight_rate;
+    base += rate;
+    if (isWeekendUTC(parseDate(nightDate))) {
+      weekendNights += 1;
+      weekendSurcharge += applyWeekendSurcharge(rate, 1, plan.weekend_surcharge_pct);
+    }
+    if (o && o.surcharge_pct > 0) {
+      overrideSurcharge += Math.round((rate * o.surcharge_pct) / 100);
+    }
+    if (o && (o.fixed_overnight !== null || o.surcharge_pct > 0) && o.name && !applied.includes(o.name)) {
+      applied.push(o.name);
+    }
+  }
+
+  return {
+    base,
+    surcharge: weekendSurcharge + overrideSurcharge,
+    total: base + weekendSurcharge + overrideSurcharge,
+    override_surcharge: overrideSurcharge,
+    applied_overrides: applied,
+    details: { nights, hours: 0, weekend_nights: weekendNights, applied_rate: "overnight_rate" },
+  };
+}
+
 export function pickActiveRatePlan<P extends RatePlan & {
   is_active?: boolean;
   priority?: number;

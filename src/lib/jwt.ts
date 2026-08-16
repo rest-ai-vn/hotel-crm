@@ -13,6 +13,7 @@ export interface StaffTokenPayload extends JWTPayload {
   role: string;
   email: string;
   name: string;
+  property_id: string;
 }
 
 export async function signStaffToken(
