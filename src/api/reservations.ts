@@ -457,7 +457,7 @@ reservations.post("/:id/extend", async (c) => {
 
   const { data: reservation, error: fetchErr } = await db
     .from("reservations")
-    .select("id, status, check_out, total_amount")
+    .select("id, status, check_out, total_amount, room_type_id")
     .eq("id", id)
     .eq("property_id", c.get("user").property_id)
     .maybeSingle();
@@ -470,6 +470,34 @@ reservations.post("/:id/extend", async (c) => {
     return c.json(
       { success: false, error: "Ngày trả mới phải bằng hoặc sau ngày trả hiện tại" },
       400,
+    );
+  }
+
+  // Overbooking guard for the extension window (old check_out → new check_out),
+  // excluding this reservation itself.
+  const pid = c.get("user").property_id;
+  const [totalRes, bookedRes] = await Promise.all([
+    db
+      .from("rooms")
+      .select("id", { count: "exact", head: true })
+      .eq("property_id", pid)
+      .eq("room_type_id", reservation.room_type_id)
+      .eq("is_active", true),
+    db
+      .from("reservations")
+      .select("id", { count: "exact", head: true })
+      .eq("property_id", pid)
+      .eq("room_type_id", reservation.room_type_id)
+      .neq("id", id)
+      .in("status", ["confirmed", "checked_in"])
+      .lte("check_in", parsed.data.check_out)
+      .gte("check_out", reservation.check_out),
+  ]);
+  const totalRooms = totalRes.count ?? 0;
+  if (totalRooms > 0 && (bookedRes.count ?? 0) + 1 > totalRooms) {
+    return c.json(
+      { success: false, error: "Không thể gia hạn: loại phòng này đã kín trong khoảng ngày mới" },
+      409,
     );
   }
 
