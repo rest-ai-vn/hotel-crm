@@ -9,6 +9,13 @@ import { Dashboard } from "./pages/Dashboard";
 import { Housekeeping } from "./pages/Housekeeping";
 import { RatePlans } from "./pages/RatePlans";
 import { Calendar } from "./pages/Calendar";
+import { Services } from "./pages/Services";
+import { Cashbook } from "./pages/Cashbook";
+import { Reports } from "./pages/Reports";
+import { Shifts } from "./pages/Shifts";
+import { NightAudit } from "./pages/NightAudit";
+import { AuditLogs } from "./pages/AuditLogs";
+import { Properties } from "./pages/Properties";
 
 export default function App() {
   return (
@@ -28,6 +35,13 @@ export default function App() {
         <Route path="/housekeeping" element={<Housekeeping />} />
         <Route path="/calendar" element={<Calendar />} />
         <Route path="/rate-plans" element={<RatePlans />} />
+        <Route path="/services" element={<Services />} />
+        <Route path="/cashbook" element={<Cashbook />} />
+        <Route path="/reports" element={<Reports />} />
+        <Route path="/shifts" element={<Shifts />} />
+        <Route path="/night-audit" element={<NightAudit />} />
+        <Route path="/audit-logs" element={<AuditLogs />} />
+        <Route path="/properties" element={<Properties />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>
     </Routes>

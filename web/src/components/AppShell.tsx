@@ -17,7 +17,13 @@ const NAV_ITEMS: NavItem[] = [
   { to: "/reservations", label: "Đặt phòng", icon: "📅", roles: ["admin", "manager", "receptionist"] },
   { to: "/guests", label: "Khách hàng", icon: "👥", roles: ["admin", "manager", "receptionist"] },
   { to: "/housekeeping", label: "Buồng phòng", icon: "🧹" },
+  { to: "/services", label: "Dịch vụ", icon: "🛎️", roles: ["admin", "manager", "receptionist"] },
+  { to: "/cashbook", label: "Thu chi", icon: "💵", roles: ["admin", "manager", "receptionist"] },
+  { to: "/shifts", label: "Giao ca", icon: "🔁", roles: ["admin", "manager", "receptionist"] },
+  { to: "/night-audit", label: "Chốt ngày", icon: "🌙", roles: ["admin", "manager"] },
+  { to: "/reports", label: "Báo cáo", icon: "📈", roles: ["admin", "manager"] },
   { to: "/rate-plans", label: "Bảng giá", icon: "💰", roles: ["admin", "manager"] },
+  { to: "/audit-logs", label: "Nhật ký", icon: "📜", roles: ["admin", "manager"] },
 ];
 
 export function AppShell() {
@@ -41,15 +47,13 @@ export function AppShell() {
           gap: "var(--space-2)",
         }}
       >
-        <div
-          style={{
-            padding: "0 var(--space-3) var(--space-4)",
-            fontSize: 18,
-            fontWeight: 700,
-            letterSpacing: "-0.01em",
-          }}
-        >
-          Hotel CRM
+        <div style={{ padding: "0 var(--space-3) var(--space-4)" }}>
+          <div style={{ fontSize: 18, fontWeight: 700, letterSpacing: "-0.01em" }}>Hotel CRM</div>
+          {user?.property_name ? (
+            <div className="muted" style={{ fontSize: 12, marginTop: 2 }}>
+              🏢 {user.property_name}
+            </div>
+          ) : null}
         </div>
         <nav style={{ display: "flex", flexDirection: "column", gap: 2 }}>
           {NAV_ITEMS.filter(

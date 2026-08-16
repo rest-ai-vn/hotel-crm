@@ -2,16 +2,20 @@ import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiFetchEnvelope, apiFetch } from "../lib/api";
 import { formatDate, formatDateTime, formatVnd, todayIso } from "../lib/format";
+import { printReservationReceipt } from "../lib/print";
 import type {
   BookingType,
   Guest,
   Payment,
+  PaymentKind,
   PaymentMethod,
   PaymentStatus,
   Reservation,
   ReservationStatus,
+  ReservationService,
   Room,
   RoomType,
+  Service,
 } from "../lib/types";
 
 interface PriceBreakdown {
@@ -234,11 +238,17 @@ function ReservationDrawer({
 }) {
   const [error, setError] = useState<string | null>(null);
   const [roomId, setRoomId] = useState(reservation.room_id ?? "");
+  const [showMove, setShowMove] = useState(false);
+  const [moveRoomId, setMoveRoomId] = useState("");
+  const [showExtend, setShowExtend] = useState(false);
+  const [extendDate, setExtendDate] = useState(reservation.check_out);
+  const [extendAmount, setExtendAmount] = useState("");
 
+  const isActive = reservation.status === "confirmed" || reservation.status === "checked_in";
   const availableRooms = useQuery({
     queryKey: ["rooms", "available-for-checkin"],
     queryFn: () => apiFetch<Room[]>("/api/rooms", { query: { status: "available" } }),
-    enabled: reservation.status === "confirmed",
+    enabled: isActive,
   });
 
   const checkIn = useMutation({
@@ -275,7 +285,61 @@ function ReservationDrawer({
     onError: (e) => setError(e instanceof Error ? e.message : "Lỗi"),
   });
 
-  const busy = checkIn.isPending || checkOut.isPending || cancel.isPending;
+  const noShow = useMutation({
+    mutationFn: () =>
+      apiFetch(`/api/reservations/${reservation.id}/no-show`, { method: "POST", body: {} }),
+    onSuccess: () => {
+      onMutated();
+      onClose();
+    },
+    onError: (e) => setError(e instanceof Error ? e.message : "Lỗi"),
+  });
+  const moveRoom = useMutation({
+    mutationFn: () =>
+      apiFetch(`/api/reservations/${reservation.id}/move-room`, {
+        method: "POST",
+        body: { room_id: moveRoomId, reason: "Đổi phòng bởi lễ tân" },
+      }),
+    onSuccess: () => {
+      onMutated();
+      onClose();
+    },
+    onError: (e) => setError(e instanceof Error ? e.message : "Lỗi"),
+  });
+  const extend = useMutation({
+    mutationFn: () =>
+      apiFetch(`/api/reservations/${reservation.id}/extend`, {
+        method: "POST",
+        body: { check_out: extendDate, extra_amount: Number(extendAmount) || 0 },
+      }),
+    onSuccess: () => {
+      onMutated();
+      onClose();
+    },
+    onError: (e) => setError(e instanceof Error ? e.message : "Lỗi"),
+  });
+
+  async function handlePrint() {
+    try {
+      const [services, payments] = await Promise.all([
+        apiFetch<ReservationService[]>("/api/services", {
+          query: { reservation_id: reservation.id },
+        }),
+        apiFetch<Payment[]>("/api/payments", { query: { reservation_id: reservation.id } }),
+      ]);
+      printReservationReceipt(reservation, services, payments);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Lỗi in phiếu");
+    }
+  }
+
+  const busy =
+    checkIn.isPending ||
+    checkOut.isPending ||
+    cancel.isPending ||
+    noShow.isPending ||
+    moveRoom.isPending ||
+    extend.isPending;
 
   return (
     <div
@@ -342,9 +406,11 @@ function ReservationDrawer({
           {reservation.notes ? <Field label="Ghi chú">{reservation.notes}</Field> : null}
         </div>
 
+        <ServiceSection reservationId={reservation.id} onMutated={onMutated} />
+
         <PaymentSection
           reservationId={reservation.id}
-          totalAmount={reservation.total_amount}
+          totalAmount={reservation.total_amount + (reservation.services_total ?? 0)}
           onMutated={onMutated}
         />
 
@@ -389,6 +455,14 @@ function ReservationDrawer({
               <button className="btn btn-danger" disabled={busy} onClick={() => cancel.mutate()}>
                 Hủy
               </button>
+              <button
+                className="btn btn-ghost"
+                disabled={busy}
+                onClick={() => noShow.mutate()}
+                title="Khách không đến nhận phòng"
+              >
+                Không đến
+              </button>
             </>
           ) : null}
           {reservation.status === "checked_in" ? (
@@ -396,7 +470,79 @@ function ReservationDrawer({
               Trả phòng
             </button>
           ) : null}
+          {isActive ? (
+            <>
+              <button className="btn btn-ghost" disabled={busy} onClick={() => setShowMove((v) => !v)}>
+                Đổi phòng
+              </button>
+              <button className="btn btn-ghost" disabled={busy} onClick={() => setShowExtend((v) => !v)}>
+                Gia hạn
+              </button>
+            </>
+          ) : null}
+          <button className="btn btn-ghost" onClick={handlePrint}>
+            🖨 In phiếu
+          </button>
         </div>
+
+        {showMove && isActive ? (
+          <div className="card" style={{ marginTop: "var(--space-3)", padding: "var(--space-3)" }}>
+            <div className="row" style={{ gap: 6, flexWrap: "wrap" }}>
+              <select
+                className="input"
+                style={{ flex: "1 1 160px" }}
+                value={moveRoomId}
+                onChange={(e) => setMoveRoomId(e.target.value)}
+              >
+                <option value="">Chọn phòng mới…</option>
+                {(availableRooms.data ?? [])
+                  .filter((r) => r.id !== reservation.room_id)
+                  .map((r) => (
+                    <option key={r.id} value={r.id}>
+                      {r.number} · {r.room_types?.name}
+                    </option>
+                  ))}
+              </select>
+              <button
+                className="btn btn-primary"
+                disabled={busy || !moveRoomId}
+                onClick={() => moveRoom.mutate()}
+              >
+                Xác nhận đổi
+              </button>
+            </div>
+          </div>
+        ) : null}
+
+        {showExtend && isActive ? (
+          <div className="card" style={{ marginTop: "var(--space-3)", padding: "var(--space-3)" }}>
+            <div className="row" style={{ gap: 6, flexWrap: "wrap" }}>
+              <input
+                type="date"
+                className="input"
+                style={{ width: "auto" }}
+                value={extendDate}
+                min={reservation.check_out}
+                onChange={(e) => setExtendDate(e.target.value)}
+              />
+              <input
+                className="input"
+                style={{ width: 160 }}
+                placeholder="Tiền thêm (VND)"
+                inputMode="numeric"
+                value={extendAmount}
+                onChange={(e) => setExtendAmount(e.target.value.replace(/[^0-9]/g, ""))}
+              />
+              <button
+                className="btn btn-primary"
+                disabled={busy || extendDate < reservation.check_out}
+                onClick={() => extend.mutate()}
+              >
+                Xác nhận gia hạn
+              </button>
+            </div>
+          </div>
+        ) : null}
       </div>
     </div>
   );
@@ -729,11 +875,12 @@ function PaymentSection({
   });
 
   const payments = list.data ?? [];
-  const paid = payments.reduce((s, p) => s + p.amount, 0);
+  const paid = payments.reduce((s, p) => s + (p.kind === "refund" ? -p.amount : p.amount), 0);
   const remaining = Math.max(0, totalAmount - paid);
 
   const [amount, setAmount] = useState<string>("");
   const [method, setMethod] = useState<PaymentMethod>("cash");
+  const [kind, setKind] = useState<PaymentKind>("payment");
   const [note, setNote] = useState("");
   const [error, setError] = useState<string | null>(null);
 
@@ -745,6 +892,7 @@ function PaymentSection({
           reservation_id: reservationId,
           amount: Number(amount),
           method,
+          kind,
           note: note || undefined,
         },
       }),
@@ -811,8 +959,18 @@ function PaymentSection({
               {payments.map((p) => (
                 <tr key={p.id}>
                   <td style={{ fontSize: 12 }}>{formatDateTime(p.created_at)}</td>
-                  <td>{METHOD_LABEL[p.method]}</td>
-                  <td>{formatVnd(p.amount)}</td>
+                  <td>
+                    {METHOD_LABEL[p.method]}
+                    {p.kind === "deposit" ? (
+                      <span className="pill info" style={{ marginLeft: 6 }}>Cọc</span>
+                    ) : p.kind === "refund" ? (
+                      <span className="pill danger" style={{ marginLeft: 6 }}>Hoàn</span>
+                    ) : null}
+                  </td>
+                  <td style={{ color: p.kind === "refund" ? "var(--color-danger)" : "inherit" }}>
+                    {p.kind === "refund" ? "-" : ""}
+                    {formatVnd(p.amount)}
+                  </td>
                   <td style={{ width: 1 }}>
                     <button
                       className="btn btn-ghost"
@@ -854,6 +1012,16 @@ function PaymentSection({
         <select
           className="input"
           style={{ width: "auto" }}
+          value={kind}
+          onChange={(e) => setKind(e.target.value as PaymentKind)}
+        >
+          <option value="payment">Thanh toán</option>
+          <option value="deposit">Đặt cọc</option>
+          <option value="refund">Hoàn tiền</option>
+        </select>
+        <select
+          className="input"
+          style={{ width: "auto" }}
           value={method}
           onChange={(e) => setMethod(e.target.value as PaymentMethod)}
         >
@@ -871,6 +1039,163 @@ function PaymentSection({
           onChange={(e) => setNote(e.target.value)}
         />
         <button className="btn btn-primary" type="submit" disabled={!canSubmit}>
+          + Thêm
+        </button>
+      </form>
+      {error ? (
+        <div style={{ color: "var(--color-danger)", fontSize: 12, marginTop: 6 }}>{error}</div>
+      ) : null}
+    </section>
+  );
+}
+
+function ServiceSection({
+  reservationId,
+  onMutated,
+}: {
+  reservationId: string;
+  onMutated: () => void;
+}) {
+  const qc = useQueryClient();
+  const charges = useQuery({
+    queryKey: ["res-services", reservationId],
+    queryFn: () =>
+      apiFetch<ReservationService[]>("/api/services", { query: { reservation_id: reservationId } }),
+  });
+  const catalog = useQuery({
+    queryKey: ["services-catalog"],
+    queryFn: () => apiFetch<Service[]>("/api/services/catalog"),
+  });
+
+  const [serviceId, setServiceId] = useState<string>("");
+  const [quantity, setQuantity] = useState<string>("1");
+  const [error, setError] = useState<string | null>(null);
+
+  const items = charges.data ?? [];
+  const total = items.reduce((s, x) => s + x.amount, 0);
+  const options = catalog.data ?? [];
+
+  const create = useMutation({
+    mutationFn: () => {
+      const svc = options.find((o) => o.id === serviceId);
+      if (!svc) throw new Error("Chọn dịch vụ");
+      return apiFetch<ReservationService>("/api/services", {
+        method: "POST",
+        body: {
+          reservation_id: reservationId,
+          service_id: svc.id,
+          name: svc.name,
+          unit_price: svc.price,
+          quantity: Math.max(1, Number(quantity) || 1),
+        },
+      });
+    },
+    onSuccess: () => {
+      setServiceId("");
+      setQuantity("1");
+      setError(null);
+      qc.invalidateQueries({ queryKey: ["res-services", reservationId] });
+      onMutated();
+    },
+    onError: (e) => setError(e instanceof Error ? e.message : "Lỗi"),
+  });
+
+  const remove = useMutation({
+    mutationFn: (id: string) => apiFetch(`/api/services/${id}`, { method: "DELETE" }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["res-services", reservationId] });
+      onMutated();
+    },
+  });
+
+  return (
+    <section style={{ marginTop: "var(--space-5)" }}>
+      <div className="row" style={{ justifyContent: "space-between", marginBottom: "var(--space-2)" }}>
+        <h3
+          style={{
+            margin: 0,
+            fontSize: 12,
+            textTransform: "uppercase",
+            letterSpacing: "0.06em",
+            color: "var(--color-text-soft)",
+          }}
+        >
+          Dịch vụ
+        </h3>
+        <div style={{ fontSize: 12 }}>
+          <span className="muted">Tổng</span> <strong>{formatVnd(total)}</strong>
+        </div>
+      </div>
+
+      {items.length > 0 ? (
+        <div className="card" style={{ overflow: "hidden", marginBottom: "var(--space-3)" }}>
+          <table className="table">
+            <thead>
+              <tr>
+                <th>Dịch vụ</th>
+                <th>SL</th>
+                <th>Thành tiền</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              {items.map((x) => (
+                <tr key={x.id}>
+                  <td>{x.name}</td>
+                  <td>{x.quantity}</td>
+                  <td>{formatVnd(x.amount)}</td>
+                  <td style={{ width: 1 }}>
+                    <button
+                      className="btn btn-ghost"
+                      style={{ fontSize: 11, padding: "2px 8px" }}
+                      onClick={() => remove.mutate(x.id)}
+                      disabled={remove.isPending}
+                      title="Xóa"
+                    >
+                      ✕
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : (
+        <div className="muted" style={{ fontSize: 12, marginBottom: "var(--space-3)" }}>
+          Chưa có dịch vụ nào.
+        </div>
+      )}
+
+      <form
+        className="row"
+        style={{ gap: 6, flexWrap: "wrap" }}
+        onSubmit={(e) => {
+          e.preventDefault();
+          if (serviceId && !create.isPending) create.mutate();
+        }}
+      >
+        <select
+          className="input"
+          style={{ flex: "1 1 160px" }}
+          value={serviceId}
+          onChange={(e) => setServiceId(e.target.value)}
+        >
+          <option value="">Chọn dịch vụ…</option>
+          {options.map((o) => (
+            <option key={o.id} value={o.id}>
+              {o.name} · {formatVnd(o.price)}
+            </option>
+          ))}
+        </select>
+        <input
+          className="input"
+          style={{ width: 70 }}
+          inputMode="numeric"
+          value={quantity}
+          onChange={(e) => setQuantity(e.target.value.replace(/[^0-9]/g, ""))}
+          title="Số lượng"
+        />
+        <button className="btn btn-primary" type="submit" disabled={!serviceId || create.isPending}>
           + Thêm
         </button>
       </form>

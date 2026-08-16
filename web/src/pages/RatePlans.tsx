@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiFetch } from "../lib/api";
 import { formatDate, formatVnd, todayIso } from "../lib/format";
-import type { BookingType, RoomType } from "../lib/types";
+import type { BookingType, RateOverride, RoomType } from "../lib/types";
 
 interface RatePlan {
   id: string;
@@ -129,6 +129,8 @@ export function RatePlans() {
         </div>
       )}
 
+      <RateOverridesSection types={types.data ?? []} />
+
       {creating || editing ? (
         <RatePlanModal
           plan={editing}
@@ -145,6 +147,136 @@ export function RatePlans() {
         />
       ) : null}
     </div>
+  );
+}
+
+function RateOverridesSection({ types }: { types: RoomType[] }) {
+  const qc = useQueryClient();
+  const [name, setName] = useState("");
+  const [date, setDate] = useState(todayIso());
+  const [roomTypeId, setRoomTypeId] = useState("");
+  const [pct, setPct] = useState("");
+  const [fixedOvernight, setFixedOvernight] = useState("");
+  const [fixedHourly, setFixedHourly] = useState("");
+  const [fixedDaytime, setFixedDaytime] = useState("");
+  const [error, setError] = useState<string | null>(null);
+
+  const list = useQuery({
+    queryKey: ["rate-overrides"],
+    queryFn: () => apiFetch<RateOverride[]>("/api/rate-overrides"),
+  });
+
+  const create = useMutation({
+    mutationFn: () =>
+      apiFetch<RateOverride>("/api/rate-overrides", {
+        method: "POST",
+        body: {
+          name,
+          date,
+          room_type_id: roomTypeId || null,
+          surcharge_pct: Number(pct) || 0,
+          fixed_overnight: fixedOvernight ? Number(fixedOvernight) : null,
+          fixed_hourly: fixedHourly ? Number(fixedHourly) : null,
+          fixed_daytime: fixedDaytime ? Number(fixedDaytime) : null,
+        },
+      }),
+    onSuccess: () => {
+      setName("");
+      setPct("");
+      setFixedOvernight("");
+      setFixedHourly("");
+      setFixedDaytime("");
+      setError(null);
+      qc.invalidateQueries({ queryKey: ["rate-overrides"] });
+    },
+    onError: (e) => setError(e instanceof Error ? e.message : "Lỗi"),
+  });
+
+  const remove = useMutation({
+    mutationFn: (id: string) => apiFetch(`/api/rate-overrides/${id}`, { method: "DELETE" }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["rate-overrides"] }),
+  });
+
+  const rows = list.data ?? [];
+
+  return (
+    <section style={{ marginTop: "var(--space-4)" }}>
+      <h2 style={{ fontSize: 14, textTransform: "uppercase", letterSpacing: "0.05em", color: "var(--color-text-soft)" }}>
+        Giá ngày lễ / sự kiện
+      </h2>
+      <div className="card" style={{ padding: "var(--space-4)" }}>
+        <form
+          className="row"
+          style={{ gap: 8, flexWrap: "wrap" }}
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (name && !create.isPending) create.mutate();
+          }}
+        >
+          <input className="input" style={{ flex: "1 1 140px" }} placeholder="Tên (VD: Lễ 2/9)" value={name} onChange={(e) => setName(e.target.value)} />
+          <input type="date" className="input" style={{ width: "auto" }} value={date} onChange={(e) => setDate(e.target.value)} />
+          <select className="input" style={{ width: "auto" }} value={roomTypeId} onChange={(e) => setRoomTypeId(e.target.value)}>
+            <option value="">Mọi loại phòng</option>
+            {types.map((t) => (
+              <option key={t.id} value={t.id}>{t.name}</option>
+            ))}
+          </select>
+          <input className="input" style={{ width: 100 }} placeholder="Phụ thu %" inputMode="numeric" value={pct} onChange={(e) => setPct(e.target.value.replace(/[^0-9]/g, ""))} />
+          <input className="input" style={{ width: 140 }} placeholder="Giá đêm cố định" inputMode="numeric" value={fixedOvernight} onChange={(e) => setFixedOvernight(e.target.value.replace(/[^0-9]/g, ""))} />
+          <input className="input" style={{ width: 130 }} placeholder="Giá giờ cố định" inputMode="numeric" value={fixedHourly} onChange={(e) => setFixedHourly(e.target.value.replace(/[^0-9]/g, ""))} />
+          <input className="input" style={{ width: 140 }} placeholder="Giá ngày cố định" inputMode="numeric" value={fixedDaytime} onChange={(e) => setFixedDaytime(e.target.value.replace(/[^0-9]/g, ""))} />
+          <button className="btn btn-primary" type="submit" disabled={!name || create.isPending}>
+            + Thêm
+          </button>
+        </form>
+        {error ? <div style={{ color: "var(--color-danger)", fontSize: 13, marginTop: 8 }}>{error}</div> : null}
+
+        {rows.length > 0 ? (
+          <table className="table" style={{ marginTop: "var(--space-3)" }}>
+            <thead>
+              <tr>
+                <th>Ngày</th>
+                <th>Tên</th>
+                <th>Loại phòng</th>
+                <th>Phụ thu</th>
+                <th>Giá cố định (giờ/đêm/ngày)</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((o) => (
+                <tr key={o.id}>
+                  <td>{formatDate(o.date)}</td>
+                  <td>{o.name}</td>
+                  <td>{o.room_types?.name ?? "Tất cả"}</td>
+                  <td>{o.surcharge_pct > 0 ? `+${o.surcharge_pct}%` : "—"}</td>
+                  <td style={{ fontSize: 12 }}>
+                    {[o.fixed_hourly, o.fixed_overnight, o.fixed_daytime]
+                      .map((v) => (v != null ? formatVnd(v) : "—"))
+                      .join(" / ")}
+                  </td>
+                  <td style={{ width: 1 }}>
+                    <button
+                      className="btn btn-ghost"
+                      style={{ fontSize: 12, padding: "2px 8px", color: "var(--color-danger)" }}
+                      onClick={() => {
+                        if (confirm(`Xóa "${o.name}"?`)) remove.mutate(o.id);
+                      }}
+                    >
+                      Xóa
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        ) : (
+          <div className="muted" style={{ fontSize: 13, marginTop: "var(--space-3)" }}>
+            Chưa có ngày lễ/sự kiện nào. Giá override sẽ tự áp dụng khi báo giá đặt phòng.
+          </div>
+        )}
+      </div>
+    </section>
   );
 }
 
