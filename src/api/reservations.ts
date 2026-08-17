@@ -83,6 +83,24 @@ reservations.get("/quote", async (c) => {
       (overrides ?? []) as RateOverride[],
     );
 
+    // Corporate rate (optional) — company discount applied before voucher.
+    let companyDiscount = 0;
+    let companyPct = 0;
+    const companyId = c.req.query("company_id");
+    if (companyId) {
+      const { data: comp } = await db
+        .from("companies")
+        .select("discount_pct")
+        .eq("id", companyId)
+        .eq("property_id", pid)
+        .eq("is_active", true)
+        .maybeSingle();
+      if (comp && comp.discount_pct > 0) {
+        companyPct = comp.discount_pct;
+        companyDiscount = Math.round((breakdown.total * comp.discount_pct) / 100);
+      }
+    }
+
     // Voucher (optional) — discount on the room subtotal.
     const voucherCode = c.req.query("voucher_code");
     let discount = 0;
@@ -102,20 +120,21 @@ reservations.get("/quote", async (c) => {
         if (err) {
           voucherErr = err;
         } else {
-          discount = voucherDiscount(v, breakdown.total);
+          discount = voucherDiscount(v, breakdown.total - companyDiscount);
           voucherId = v.id;
         }
       }
     }
 
-    // VAT from property settings, applied after discount.
+    // VAT from property settings, applied after all discounts.
     const { data: prop } = await db
       .from("properties")
       .select("vat_rate")
       .eq("id", pid)
       .maybeSingle();
     const vatRate = prop?.vat_rate ?? 0;
-    const tax = computeVat(breakdown.total - discount, vatRate);
+    const totalDiscount = companyDiscount + discount;
+    const tax = computeVat(breakdown.total - totalDiscount, vatRate);
 
     return c.json({
       success: true,
@@ -124,10 +143,12 @@ reservations.get("/quote", async (c) => {
         plan_name: plan.name,
         breakdown: {
           ...breakdown,
-          discount,
+          company_discount: companyDiscount,
+          company_discount_pct: companyPct,
+          discount: totalDiscount,
           vat_rate: vatRate,
           tax_amount: tax,
-          grand_total: breakdown.total - discount + tax,
+          grand_total: breakdown.total - totalDiscount + tax,
           voucher_id: voucherId,
           voucher_error: voucherErr,
         },
@@ -197,6 +218,8 @@ reservations.get("/", async (c) => {
   if (from && /^\d{4}-\d{2}-\d{2}$/.test(from)) query = query.gte("check_in", from);
   if (to && /^\d{4}-\d{2}-\d{2}$/.test(to)) query = query.lte("check_in", to);
   if (status) query = query.eq("status", status);
+  const groupCode = c.req.query("group_code");
+  if (groupCode) query = query.eq("group_code", groupCode);
 
   const { data, error, count } = await query
     .order("check_in", { ascending: false })
@@ -280,8 +303,11 @@ reservations.post("/", async (c) => {
     if (!comp) return c.json({ success: false, error: "Công ty không hợp lệ" }, 400);
   }
 
+  // Client may pass an existing group_code to append rooms of another type
+  // to the same group (mixed-type group bookings).
   const groupCode =
-    rooms_count > 1 ? `GRP-${Date.now().toString(36).toUpperCase().slice(-6)}` : null;
+    reservationData.group_code ??
+    (rooms_count > 1 ? `GRP-${Date.now().toString(36).toUpperCase().slice(-6)}` : null);
   const rows = Array.from({ length: rooms_count }, () => ({
     ...reservationData,
     property_id: user.property_id,
@@ -333,6 +359,33 @@ reservations.put("/:id", async (c) => {
 
   const id = c.req.param("id");
   const db = getServerDb();
+  const pid = c.get("user").property_id;
+
+  // Assigning a room must not double-book it for overlapping dates.
+  if (parsed.data.room_id) {
+    const { data: current } = await db
+      .from("reservations")
+      .select("check_in, check_out")
+      .eq("id", id)
+      .eq("property_id", pid)
+      .maybeSingle();
+    if (!current) return c.json({ success: false, error: "Reservation not found" }, 404);
+
+    const checkIn = parsed.data.check_in ?? current.check_in;
+    const checkOut = parsed.data.check_out ?? current.check_out;
+    const { count: clash } = await db
+      .from("reservations")
+      .select("id", { count: "exact", head: true })
+      .eq("property_id", pid)
+      .eq("room_id", parsed.data.room_id)
+      .neq("id", id)
+      .in("status", ["confirmed", "checked_in"])
+      .lt("check_in", checkOut)
+      .gt("check_out", checkIn);
+    if ((clash ?? 0) > 0) {
+      return c.json({ success: false, error: "Phòng này đã có khách trong khoảng ngày trùng" }, 409);
+    }
+  }
   const { data, error } = await db
     .from("reservations")
     .update(parsed.data)

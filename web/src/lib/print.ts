@@ -81,7 +81,17 @@ export function printReservationReceipt(
 
   <h2>Chi phí</h2>
   <table>
-    <tr><td>Tiền phòng</td><td></td><td class="num">${formatVnd(reservation.total_amount)}</td></tr>
+    <tr><td>Tiền phòng</td><td></td><td class="num">${formatVnd(reservation.base_amount + reservation.surcharge)}</td></tr>
+    ${
+      reservation.discount_amount > 0
+        ? `<tr><td>Giảm giá</td><td></td><td class="num">-${formatVnd(reservation.discount_amount)}</td></tr>`
+        : ""
+    }
+    ${
+      reservation.tax_amount > 0
+        ? `<tr><td>VAT</td><td></td><td class="num">${formatVnd(reservation.tax_amount)}</td></tr>`
+        : ""
+    }
     ${serviceRows}
     <tr class="total-row"><td>Tổng cộng</td><td></td><td class="num">${formatVnd(folioTotal)}</td></tr>
   </table>

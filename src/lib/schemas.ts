@@ -98,6 +98,7 @@ export const reservationCreateSchema = z
     rooms_count: z.number().int().min(1).max(10).default(1),
     voucher_id: uuid.optional(),
     company_id: uuid.optional(),
+    group_code: z.string().regex(/^GRP-[A-Z0-9]{4,12}$/).optional(),
     notes: z.string().max(2000).optional(),
     internal_notes: z.string().max(2000).optional(),
   })
@@ -272,6 +273,7 @@ export const companyCreateSchema = z.object({
   phone: z.string().max(50).optional(),
   email: z.string().email().optional(),
   note: z.string().max(1000).optional(),
+  discount_pct: z.number().int().min(0).max(100).default(0),
 });
 export const companyUpdateSchema = companyCreateSchema.partial().extend({
   is_active: z.boolean().optional(),

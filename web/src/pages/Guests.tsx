@@ -2,7 +2,8 @@ import { useState, type FormEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiFetchEnvelope, apiFetch, ApiHttpError } from "../lib/api";
 import { formatDate, formatVnd } from "../lib/format";
-import type { Guest } from "../lib/types";
+import { useAuth } from "../lib/auth-context";
+import type { Company, Guest } from "../lib/types";
 
 export function Guests() {
   const qc = useQueryClient();
@@ -109,7 +110,147 @@ export function Guests() {
       ) : null}
 
       {selected ? <GuestDrawer guest={selected} onClose={() => setSelected(null)} /> : null}
+
+      <CompaniesSection />
     </div>
+  );
+}
+
+function CompaniesSection() {
+  const { user } = useAuth();
+  const qc = useQueryClient();
+  const [name, setName] = useState("");
+  const [taxCode, setTaxCode] = useState("");
+  const [discount, setDiscount] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const canManage = user?.role === "admin" || user?.role === "manager";
+
+  const list = useQuery({
+    queryKey: ["companies", "all"],
+    queryFn: () => apiFetch<Company[]>("/api/companies", { query: { all: 1 } }),
+  });
+
+  const create = useMutation({
+    mutationFn: () =>
+      apiFetch<Company>("/api/companies", {
+        method: "POST",
+        body: {
+          name,
+          tax_code: taxCode || undefined,
+          discount_pct: Number(discount) || 0,
+        },
+      }),
+    onSuccess: () => {
+      setName("");
+      setTaxCode("");
+      setDiscount("");
+      setError(null);
+      qc.invalidateQueries({ queryKey: ["companies"] });
+    },
+    onError: (e) => setError(e instanceof Error ? e.message : "Lỗi"),
+  });
+
+  const update = useMutation({
+    mutationFn: ({ id, body }: { id: string; body: Record<string, unknown> }) =>
+      apiFetch(`/api/companies/${id}`, { method: "PUT", body }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["companies"] }),
+  });
+
+  const rows = list.data ?? [];
+
+  return (
+    <section style={{ marginTop: "var(--space-4)" }}>
+      <h2
+        style={{
+          fontSize: 14,
+          textTransform: "uppercase",
+          letterSpacing: "0.06em",
+          color: "var(--color-text-soft)",
+          margin: "0 0 var(--space-2)",
+        }}
+      >
+        Công ty đối tác (công nợ · giá hợp đồng)
+      </h2>
+      <div className="card" style={{ padding: "var(--space-4)" }}>
+        {canManage ? (
+          <form
+            className="row"
+            style={{ gap: 8, flexWrap: "wrap" }}
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (name && !create.isPending) create.mutate();
+            }}
+          >
+            <input className="input" style={{ flex: "1 1 200px" }} placeholder="Tên công ty" value={name} onChange={(e) => setName(e.target.value)} />
+            <input className="input" style={{ width: 140 }} placeholder="Mã số thuế" value={taxCode} onChange={(e) => setTaxCode(e.target.value)} />
+            <input className="input" style={{ width: 150 }} placeholder="Chiết khấu HĐ (%)" inputMode="numeric" value={discount} onChange={(e) => setDiscount(e.target.value.replace(/[^0-9]/g, ""))} />
+            <button className="btn btn-primary" type="submit" disabled={!name || create.isPending}>
+              + Thêm công ty
+            </button>
+          </form>
+        ) : null}
+        {error ? <div style={{ color: "var(--color-danger)", fontSize: 13, marginTop: 8 }}>{error}</div> : null}
+
+        {rows.length === 0 ? (
+          <div className="muted" style={{ fontSize: 13, marginTop: "var(--space-2)" }}>
+            Chưa có công ty nào. Gán công ty khi đặt phòng để theo dõi công nợ và áp giá hợp đồng.
+          </div>
+        ) : (
+          <table className="table" style={{ marginTop: canManage ? "var(--space-3)" : 0 }}>
+            <thead>
+              <tr>
+                <th>Công ty</th>
+                <th>MST</th>
+                <th>Chiết khấu HĐ</th>
+                <th>Trạng thái</th>
+                {canManage ? <th></th> : null}
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((co) => (
+                <tr key={co.id}>
+                  <td style={{ fontWeight: 600 }}>{co.name}</td>
+                  <td className="muted" style={{ fontSize: 13 }}>{co.tax_code ?? "—"}</td>
+                  <td>{co.discount_pct ? `-${co.discount_pct}%` : "—"}</td>
+                  <td>
+                    {co.is_active ? (
+                      <span className="pill success">Hoạt động</span>
+                    ) : (
+                      <span className="pill neutral">Ngừng</span>
+                    )}
+                  </td>
+                  {canManage ? (
+                    <td style={{ width: 1 }}>
+                      <div className="row" style={{ gap: 4 }}>
+                        <button
+                          className="btn btn-ghost"
+                          style={{ fontSize: 12, padding: "2px 8px" }}
+                          onClick={() => {
+                            const pct = window.prompt("Chiết khấu hợp đồng (%) cho " + co.name, String(co.discount_pct ?? 0));
+                            if (pct !== null) {
+                              update.mutate({ id: co.id, body: { discount_pct: Math.min(100, Number(pct) || 0) } });
+                            }
+                          }}
+                        >
+                          Sửa CK
+                        </button>
+                        <button
+                          className="btn btn-ghost"
+                          style={{ fontSize: 12, padding: "2px 8px" }}
+                          onClick={() => update.mutate({ id: co.id, body: { is_active: !co.is_active } })}
+                        >
+                          {co.is_active ? "Ngừng" : "Bật"}
+                        </button>
+                      </div>
+                    </td>
+                  ) : null}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+    </section>
   );
 }
 

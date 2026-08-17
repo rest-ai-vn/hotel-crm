@@ -231,6 +231,7 @@ export interface Company {
   email: string | null;
   note: string | null;
   is_active: boolean;
+  discount_pct?: number;
 }
 
 export type WorkOrderStatus = "open" | "in_progress" | "done";

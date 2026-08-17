@@ -23,6 +23,8 @@ interface PriceBreakdown {
   base: number;
   surcharge: number;
   total: number;
+  company_discount: number;
+  company_discount_pct: number;
   discount: number;
   vat_rate: number;
   tax_amount: number;
@@ -30,6 +32,15 @@ interface PriceBreakdown {
   voucher_id: string | null;
   voucher_error: string | null;
   details: { nights: number; hours: number; weekend_nights: number; applied_rate: string };
+}
+
+interface GroupLine {
+  typeId: string;
+  count: string;
+}
+
+function makeGroupCode(): string {
+  return `GRP-${Math.random().toString(36).slice(2, 8).toUpperCase()}`;
 }
 interface QuoteResponse {
   plan_id: string;
@@ -416,6 +427,8 @@ function ReservationDrawer({
           {reservation.notes ? <Field label="Ghi chú">{reservation.notes}</Field> : null}
         </div>
 
+        {reservation.group_code ? <GroupSection groupCode={reservation.group_code} currentId={reservation.id} /> : null}
+
         <ServiceSection reservationId={reservation.id} onMutated={onMutated} />
 
         <PaymentSection
@@ -583,6 +596,7 @@ function CreateReservationModal({
   const [adults, setAdults] = useState("2");
   const [children, setChildren] = useState("0");
   const [roomsCount, setRoomsCount] = useState("1");
+  const [extraLines, setExtraLines] = useState<GroupLine[]>([]);
   const [voucherCode, setVoucherCode] = useState("");
   const [companyId, setCompanyId] = useState("");
   const [guestName, setGuestName] = useState("");
@@ -611,6 +625,7 @@ function CreateReservationModal({
       effectiveCheckOut,
       bookingType === "hourly" ? durationHours : null,
       voucherCode,
+      companyId,
     ],
     queryFn: () =>
       apiFetch<QuoteResponse>("/api/reservations/quote", {
@@ -621,6 +636,7 @@ function CreateReservationModal({
           check_out: effectiveCheckOut,
           duration_hours: bookingType === "hourly" ? durationHours : undefined,
           voucher_code: voucherCode.trim() || undefined,
+          company_id: companyId || undefined,
         },
       }),
     enabled: canQuote,
@@ -638,26 +654,64 @@ function CreateReservationModal({
         },
       });
       const b = quote.data.breakdown;
-      const body = {
+      const validExtras = extraLines.filter((l) => l.typeId && Number(l.count) > 0);
+      const groupCode =
+        validExtras.length > 0 ? makeGroupCode() : undefined;
+      const shared = {
         guest_id: guest.id,
-        room_type_id: roomTypeId,
         booking_type: bookingType,
         check_in: checkIn,
         check_out: effectiveCheckOut,
         duration_hours: bookingType === "hourly" ? Number(durationHours) : undefined,
         adults: Number(adults) || 1,
         children: Number(children) || 0,
-        base_amount: b.base,
-        surcharge: b.surcharge,
-        discount_amount: b.discount,
-        tax_amount: b.tax_amount,
-        total_amount: b.grand_total,
-        rooms_count: Math.max(1, Number(roomsCount) || 1),
         voucher_id: b.voucher_id ?? undefined,
         company_id: companyId || undefined,
         notes: notes || undefined,
+        group_code: groupCode,
       };
-      return apiFetch<Reservation>("/api/reservations", { method: "POST", body });
+      const first = await apiFetch<Reservation>("/api/reservations", {
+        method: "POST",
+        body: {
+          ...shared,
+          room_type_id: roomTypeId,
+          base_amount: b.base,
+          surcharge: b.surcharge,
+          discount_amount: b.discount,
+          tax_amount: b.tax_amount,
+          total_amount: b.grand_total,
+          rooms_count: Math.max(1, Number(roomsCount) || 1),
+        },
+      });
+      // Extra room-type lines join the same group with their own quoted price.
+      for (const line of validExtras) {
+        const q = await apiFetch<QuoteResponse>("/api/reservations/quote", {
+          query: {
+            room_type_id: line.typeId,
+            booking_type: bookingType,
+            check_in: checkIn,
+            check_out: effectiveCheckOut,
+            duration_hours: bookingType === "hourly" ? durationHours : undefined,
+            voucher_code: voucherCode.trim() || undefined,
+            company_id: companyId || undefined,
+          },
+        });
+        const lb = q.breakdown;
+        await apiFetch<Reservation>("/api/reservations", {
+          method: "POST",
+          body: {
+            ...shared,
+            room_type_id: line.typeId,
+            base_amount: lb.base,
+            surcharge: lb.surcharge,
+            discount_amount: lb.discount,
+            tax_amount: lb.tax_amount,
+            total_amount: lb.grand_total,
+            rooms_count: Math.max(1, Number(line.count) || 1),
+          },
+        });
+      }
+      return first;
     },
     onSuccess: () => onCreated(),
     onError: (e) => setError(e instanceof Error ? e.message : "Lỗi tạo đặt phòng"),
@@ -795,6 +849,58 @@ function CreateReservationModal({
             </FormField>
           </div>
 
+          {extraLines.map((line, i) => (
+            <div key={i} className="row" style={{ gap: 8 }}>
+              <select
+                className="input"
+                style={{ flex: 1 }}
+                value={line.typeId}
+                onChange={(e) =>
+                  setExtraLines(extraLines.map((l, j) => (j === i ? { ...l, typeId: e.target.value } : l)))
+                }
+              >
+                <option value="">Chọn loại phòng thêm…</option>
+                {(types.data ?? [])
+                  .filter((t) => t.id !== roomTypeId)
+                  .map((t) => (
+                    <option key={t.id} value={t.id}>
+                      {t.name} ({t.code})
+                    </option>
+                  ))}
+              </select>
+              <input
+                type="number"
+                min={1}
+                max={10}
+                className="input"
+                style={{ width: 80 }}
+                value={line.count}
+                onChange={(e) =>
+                  setExtraLines(
+                    extraLines.map((l, j) =>
+                      j === i ? { ...l, count: e.target.value.replace(/[^0-9]/g, "") } : l,
+                    ),
+                  )
+                }
+              />
+              <button
+                type="button"
+                className="btn btn-ghost"
+                onClick={() => setExtraLines(extraLines.filter((_, j) => j !== i))}
+              >
+                ✕
+              </button>
+            </div>
+          ))}
+          <button
+            type="button"
+            className="btn btn-ghost"
+            style={{ alignSelf: "flex-start", fontSize: 13 }}
+            onClick={() => setExtraLines([...extraLines, { typeId: "", count: "1" }])}
+          >
+            ＋ Thêm loại phòng khác (đặt đoàn hỗn hợp)
+          </button>
+
           <div className="row" style={{ gap: "var(--space-3)" }}>
             <FormField label="Mã giảm giá" style={{ flex: 1 }}>
               <input
@@ -876,10 +982,16 @@ function CreateReservationModal({
                     {quote.data.breakdown.voucher_error}
                   </div>
                 ) : null}
-                {quote.data.breakdown.discount > 0 ? (
+                {quote.data.breakdown.company_discount > 0 ? (
                   <div className="row" style={{ justifyContent: "space-between", color: "var(--color-accent)" }}>
-                    <span>Giảm giá</span>
-                    <span>-{formatVnd(quote.data.breakdown.discount)}</span>
+                    <span>Giá hợp đồng CTY (-{quote.data.breakdown.company_discount_pct}%)</span>
+                    <span>-{formatVnd(quote.data.breakdown.company_discount)}</span>
+                  </div>
+                ) : null}
+                {quote.data.breakdown.discount > quote.data.breakdown.company_discount ? (
+                  <div className="row" style={{ justifyContent: "space-between", color: "var(--color-accent)" }}>
+                    <span>Voucher</span>
+                    <span>-{formatVnd(quote.data.breakdown.discount - quote.data.breakdown.company_discount)}</span>
                   </div>
                 ) : null}
                 {quote.data.breakdown.tax_amount > 0 ? (
@@ -1342,6 +1454,62 @@ function ServiceSection({
       {error ? (
         <div style={{ color: "var(--color-danger)", fontSize: 12, marginTop: 6 }}>{error}</div>
       ) : null}
+    </section>
+  );
+}
+
+function GroupSection({ groupCode, currentId }: { groupCode: string; currentId: string }) {
+  const members = useQuery({
+    queryKey: ["group", groupCode],
+    queryFn: () =>
+      apiFetchEnvelope<Reservation[]>("/api/reservations", {
+        query: { group_code: groupCode, limit: 50 },
+      }),
+  });
+
+  const rows = (members.data?.data ?? []).filter((r) => r.status !== "cancelled");
+  const groupTotal = rows.reduce((s, r) => s + r.total_amount + (r.services_total ?? 0), 0);
+
+  return (
+    <section style={{ marginTop: "var(--space-5)" }}>
+      <div className="row" style={{ justifyContent: "space-between", marginBottom: "var(--space-2)" }}>
+        <h3
+          style={{
+            margin: 0,
+            fontSize: 12,
+            textTransform: "uppercase",
+            letterSpacing: "0.06em",
+            color: "var(--color-text-soft)",
+          }}
+        >
+          👥 Đoàn {groupCode} ({rows.length} phòng)
+        </h3>
+        <div style={{ fontSize: 12 }}>
+          <span className="muted">Tổng đoàn</span> <strong>{formatVnd(groupTotal)}</strong>
+        </div>
+      </div>
+      <div className="card" style={{ overflow: "hidden" }}>
+        <table className="table">
+          <tbody>
+            {rows.map((r) => (
+              <tr key={r.id} style={{ opacity: r.id === currentId ? 1 : 0.85 }}>
+                <td style={{ fontFamily: "ui-monospace, monospace", fontSize: 11 }}>
+                  {r.confirmation_code}
+                  {r.id === currentId ? " ←" : ""}
+                </td>
+                <td style={{ fontSize: 12 }}>{r.room_types?.code ?? ""}</td>
+                <td style={{ fontSize: 12 }}>{r.rooms?.number ?? "Chưa gán"}</td>
+                <td style={{ fontSize: 12 }}>{formatVnd(r.total_amount)}</td>
+                <td>
+                  <span className={`pill ${PAYMENT_STATUS_PILL[r.payment_status]}`} style={{ fontSize: 11 }}>
+                    {PAYMENT_STATUS_LABEL[r.payment_status]}
+                  </span>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </section>
   );
 }
