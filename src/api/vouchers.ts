@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { getServerDb } from "../db/supabase-client";
+import { getTenantDb } from "../db/tenant-db";
 import { parseBody } from "../lib/validate";
 import { voucherCreateSchema, voucherUpdateSchema } from "../lib/schemas";
 import { logAudit } from "../lib/audit";
@@ -7,7 +7,7 @@ import { logAudit } from "../lib/audit";
 const vouchers = new Hono();
 
 vouchers.get("/", async (c) => {
-  const db = getServerDb();
+  const db = await getTenantDb(c.get("user").property_id);
   const { data, error } = await db
     .from("vouchers")
     .select("*")
@@ -21,7 +21,7 @@ vouchers.post("/", async (c) => {
   const parsed = await parseBody(c, voucherCreateSchema);
   if (!parsed.ok) return parsed.response;
 
-  const db = getServerDb();
+  const db = await getTenantDb(c.get("user").property_id);
   const user = c.get("user");
   const { data, error } = await db
     .from("vouchers")
@@ -53,7 +53,7 @@ vouchers.put("/:id", async (c) => {
   if (!parsed.ok) return parsed.response;
 
   const id = c.req.param("id") ?? "";
-  const db = getServerDb();
+  const db = await getTenantDb(c.get("user").property_id);
   const user = c.get("user");
   const { data, error } = await db
     .from("vouchers")

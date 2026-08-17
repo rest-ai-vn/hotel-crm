@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { getServerDb } from "../db/supabase-client";
+import { getTenantDb } from "../db/tenant-db";
 import { parseBody } from "../lib/validate";
 import { companyCreateSchema, companyUpdateSchema } from "../lib/schemas";
 import { requireRole } from "../middleware/auth";
@@ -8,7 +8,7 @@ import { logAudit } from "../lib/audit";
 const companies = new Hono();
 
 companies.get("/", async (c) => {
-  const db = getServerDb();
+  const db = await getTenantDb(c.get("user").property_id);
   const includeInactive = c.req.query("all") === "1";
   let q = db
     .from("companies")
@@ -25,7 +25,7 @@ companies.post("/", requireRole("admin", "manager"), async (c) => {
   const parsed = await parseBody(c, companyCreateSchema);
   if (!parsed.ok) return parsed.response;
 
-  const db = getServerDb();
+  const db = await getTenantDb(c.get("user").property_id);
   const user = c.get("user");
   const { data, error } = await db
     .from("companies")
@@ -43,7 +43,7 @@ companies.put("/:id", requireRole("admin", "manager"), async (c) => {
   if (!parsed.ok) return parsed.response;
 
   const id = c.req.param("id") ?? "";
-  const db = getServerDb();
+  const db = await getTenantDb(c.get("user").property_id);
   const user = c.get("user");
   const { data, error } = await db
     .from("companies")

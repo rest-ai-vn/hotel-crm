@@ -3,6 +3,7 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { useSearchParams } from "react-router-dom";
 import { apiFetch } from "../lib/api";
 import { addDaysIso, formatDate, formatVnd, todayIso } from "../lib/format";
+import { t as tr, useLang, type Lang } from "../lib/i18n";
 
 interface PublicHotel {
   name: string;
@@ -33,6 +34,7 @@ interface PublicBooking {
 }
 
 export function BookingPublic() {
+  const [lang, setLang] = useLang();
   const [params] = useSearchParams();
   const code = params.get("hotel") ?? "";
   const [checkIn, setCheckIn] = useState(todayIso());
@@ -81,40 +83,40 @@ export function BookingPublic() {
       setDone(data);
       setError(null);
     },
-    onError: (e) => setError(e instanceof Error ? e.message : "Lỗi đặt phòng"),
+    onError: (e) => setError(e instanceof Error ? e.message : "Booking failed / Lỗi đặt phòng"),
   });
 
   if (!code) {
     return (
-      <PublicShell title="Đặt phòng">
-        <div className="muted">Thiếu mã khách sạn trong đường dẫn (?hotel=MÃ).</div>
+      <PublicShell title={tr(lang, "booking_title")} lang={lang} onLang={setLang}>
+        <div className="muted">{tr(lang, "missing_code")}</div>
       </PublicShell>
     );
   }
   if (hotel.isError) {
     return (
-      <PublicShell title="Đặt phòng">
-        <div style={{ color: "var(--color-danger)" }}>Không tìm thấy khách sạn.</div>
+      <PublicShell title={tr(lang, "booking_title")} lang={lang} onLang={setLang}>
+        <div style={{ color: "var(--color-danger)" }}>{tr(lang, "not_found")}</div>
       </PublicShell>
     );
   }
   if (!hotel.data) {
     return (
-      <PublicShell title="Đặt phòng">
-        <div className="muted">Đang tải…</div>
+      <PublicShell title={tr(lang, "booking_title")} lang={lang} onLang={setLang}>
+        <div className="muted">{tr(lang, "loading")}</div>
       </PublicShell>
     );
   }
 
   if (done) {
     return (
-      <PublicShell title={hotel.data.name}>
+      <PublicShell title={hotel.data.name} lang={lang} onLang={setLang}>
         <div className="card" style={{ padding: "var(--space-6)", textAlign: "center" }}>
           <div style={{ fontSize: 44 }}>🎉</div>
-          <h2 style={{ margin: "8px 0 4px" }}>Đặt phòng thành công!</h2>
+          <h2 style={{ margin: "8px 0 4px" }}>{tr(lang, "success")}</h2>
           <div className="muted" style={{ marginBottom: 12 }}>
             {formatDate(done.check_in)} → {formatDate(done.check_out)} ·{" "}
-            {formatVnd(done.total_amount)} (thanh toán tại khách sạn)
+            {formatVnd(done.total_amount)} ({tr(lang, "payment_note")})
           </div>
           <div
             style={{
@@ -131,8 +133,8 @@ export function BookingPublic() {
             {done.confirmation_code}
           </div>
           <div className="muted" style={{ fontSize: 13, marginTop: 12 }}>
-            Vui lòng đọc mã này khi nhận phòng.
-            {hotel.data.phone ? ` Hotline: ${hotel.data.phone}` : ""}
+            {tr(lang, "quote_code")}
+            {hotel.data.phone ? ` ${tr(lang, "hotline")}: ${hotel.data.phone}` : ""}
           </div>
         </div>
       </PublicShell>
@@ -144,11 +146,11 @@ export function BookingPublic() {
     !!selectedType && !!o && o.available > 0 && name.trim().length >= 2 && phone.trim().length >= 8;
 
   return (
-    <PublicShell title={hotel.data.name} subtitle={hotel.data.address ?? undefined}>
+    <PublicShell title={hotel.data.name} subtitle={hotel.data.address ?? undefined} lang={lang} onLang={setLang}>
       <div className="card" style={{ padding: "var(--space-4)", marginBottom: "var(--space-4)" }}>
         <div className="row" style={{ gap: "var(--space-3)", flexWrap: "wrap" }}>
           <label className="stack" style={{ gap: 4 }}>
-            <span className="muted" style={{ fontSize: 12 }}>Nhận phòng</span>
+            <span className="muted" style={{ fontSize: 12 }}>{tr(lang, "check_in")}</span>
             <input
               type="date"
               className="input"
@@ -162,7 +164,7 @@ export function BookingPublic() {
             />
           </label>
           <label className="stack" style={{ gap: 4 }}>
-            <span className="muted" style={{ fontSize: 12 }}>Trả phòng</span>
+            <span className="muted" style={{ fontSize: 12 }}>{tr(lang, "check_out")}</span>
             <input
               type="date"
               className="input"
@@ -195,25 +197,25 @@ export function BookingPublic() {
                 <div>
                   <div style={{ fontWeight: 700, fontSize: 16 }}>{t.name}</div>
                   <div className="muted" style={{ fontSize: 13 }}>
-                    Tối đa {t.max_guests} khách
+                    {tr(lang, "max_guests", { n: t.max_guests })}
                     {t.description ? ` · ${t.description}` : ""}
                   </div>
                 </div>
                 {selected && offer.isLoading ? (
-                  <span className="muted">Đang tính giá…</span>
+                  <span className="muted">{tr(lang, "computing")}</span>
                 ) : selected && o ? (
                   <div style={{ textAlign: "right" }}>
                     <div style={{ fontWeight: 700, fontSize: 18, color: "var(--color-accent)" }}>
                       {formatVnd(o.total)}
                     </div>
                     <div className="muted" style={{ fontSize: 12 }}>
-                      {o.available > 0 ? `Còn ${o.available} phòng` : "Hết phòng"}
-                      {o.tax_amount > 0 ? " · đã gồm VAT" : ""}
+                      {o.available > 0 ? tr(lang, "rooms_left", { n: o.available }) : tr(lang, "sold_out")}
+                      {o.tax_amount > 0 ? ` · ${tr(lang, "vat_included")}` : ""}
                     </div>
                   </div>
                 ) : selected && offer.isError ? (
                   <span style={{ color: "var(--color-danger)", fontSize: 13 }}>
-                    {(offer.error as Error)?.message ?? "Chưa có giá"}
+                    {(offer.error as Error)?.message ?? tr(lang, "no_rate")}
                   </span>
                 ) : null}
               </div>
@@ -224,24 +226,24 @@ export function BookingPublic() {
 
       {selectedType ? (
         <div className="card" style={{ padding: "var(--space-4)" }}>
-          <h3 style={{ margin: "0 0 var(--space-3)", fontSize: 15 }}>Thông tin liên hệ</h3>
+          <h3 style={{ margin: "0 0 var(--space-3)", fontSize: 15 }}>{tr(lang, "contact")}</h3>
           <div className="stack" style={{ gap: "var(--space-3)" }}>
             <input
               className="input"
-              placeholder="Họ tên"
+              placeholder={tr(lang, "full_name")}
               value={name}
               onChange={(e) => setName(e.target.value)}
             />
             <input
               className="input"
-              placeholder="Số điện thoại"
+              placeholder={tr(lang, "phone")}
               inputMode="tel"
               value={phone}
               onChange={(e) => setPhone(e.target.value)}
             />
             <input
               className="input"
-              placeholder="Ghi chú (tuỳ chọn)"
+              placeholder={tr(lang, "note_opt")}
               value={note}
               onChange={(e) => setNote(e.target.value)}
             />
@@ -262,15 +264,15 @@ export function BookingPublic() {
               onClick={() => book.mutate()}
             >
               {book.isPending
-                ? "Đang đặt…"
+                ? "…"
                 : o
-                  ? `Đặt phòng · ${formatVnd(o.total)} (trả tại khách sạn)`
-                  : "Đặt phòng"}
+                  ? `${tr(lang, "book_btn")} · ${formatVnd(o.total)} (${tr(lang, "pay_at_hotel")})`
+                  : tr(lang, "book_btn")}
             </button>
           </div>
         </div>
       ) : (
-        <div className="muted" style={{ fontSize: 13 }}>Chọn loại phòng để tiếp tục.</div>
+        <div className="muted" style={{ fontSize: 13 }}>{tr(lang, "pick_type")}</div>
       )}
     </PublicShell>
   );
@@ -279,15 +281,33 @@ export function BookingPublic() {
 function PublicShell({
   title,
   subtitle,
+  lang,
+  onLang,
   children,
 }: {
   title: string;
   subtitle?: string;
+  lang?: Lang;
+  onLang?: (l: Lang) => void;
   children: React.ReactNode;
 }) {
   return (
     <div style={{ minHeight: "100vh", background: "var(--color-bg)" }}>
       <div style={{ maxWidth: 640, margin: "0 auto", padding: "var(--space-6) var(--space-4)" }}>
+        {lang && onLang ? (
+          <div className="row" style={{ justifyContent: "flex-end", gap: 4 }}>
+            {(["vi", "en"] as Lang[]).map((l) => (
+              <button
+                key={l}
+                className={`btn ${lang === l ? "btn-primary" : "btn-ghost"}`}
+                style={{ fontSize: 12, padding: "3px 10px" }}
+                onClick={() => onLang(l)}
+              >
+                {l.toUpperCase()}
+              </button>
+            ))}
+          </div>
+        ) : null}
         <div style={{ textAlign: "center", marginBottom: "var(--space-5)" }}>
           <div style={{ fontSize: 34 }}>🏨</div>
           <h1 style={{ margin: "4px 0 0", fontSize: 24, letterSpacing: "-0.01em" }}>{title}</h1>

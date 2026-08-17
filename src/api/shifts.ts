@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { getServerDb } from "../db/supabase-client";
+import { getTenantDb } from "../db/tenant-db";
 import { parseBody } from "../lib/validate";
 import { shiftCloseSchema, shiftOpenSchema } from "../lib/schemas";
 import { computeShiftCashSummary, type ShiftPayment } from "../lib/shifts";
@@ -14,7 +14,7 @@ interface CashTxnRow {
 
 /** Payments + cashbook activity between a shift's open time and now/close. */
 async function loadShiftActivity(propertyId: string, openedAt: string, until?: string) {
-  const db = getServerDb();
+  const db = await getTenantDb(propertyId);
   let paymentsQ = db
     .from("payments")
     .select("amount, method, kind, created_at")
@@ -42,7 +42,7 @@ async function loadShiftActivity(propertyId: string, openedAt: string, until?: s
 }
 
 shifts.get("/", async (c) => {
-  const db = getServerDb();
+  const db = await getTenantDb(c.get("user").property_id);
   const limit = Math.min(Number(c.req.query("limit") || 30), 100);
   const { data, error } = await db
     .from("shifts")
@@ -55,7 +55,7 @@ shifts.get("/", async (c) => {
 });
 
 shifts.get("/current", async (c) => {
-  const db = getServerDb();
+  const db = await getTenantDb(c.get("user").property_id);
   const pid = c.get("user").property_id;
   const { data: shift, error } = await db
     .from("shifts")
@@ -80,7 +80,7 @@ shifts.post("/open", async (c) => {
   const parsed = await parseBody(c, shiftOpenSchema);
   if (!parsed.ok) return parsed.response;
 
-  const db = getServerDb();
+  const db = await getTenantDb(c.get("user").property_id);
   const user = c.get("user");
   const { data, error } = await db
     .from("shifts")
@@ -110,7 +110,7 @@ shifts.post("/close", async (c) => {
   const parsed = await parseBody(c, shiftCloseSchema);
   if (!parsed.ok) return parsed.response;
 
-  const db = getServerDb();
+  const db = await getTenantDb(c.get("user").property_id);
   const user = c.get("user");
   const { data: shift, error: findErr } = await db
     .from("shifts")

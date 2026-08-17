@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { getServerDb } from "../db/supabase-client";
+import { getTenantDb } from "../db/tenant-db";
 import { parseBody } from "../lib/validate";
 import { serviceCreateSchema, serviceUpdateSchema, serviceChargeSchema } from "../lib/schemas";
 import { requireRole } from "../middleware/auth";
@@ -9,7 +9,7 @@ const services = new Hono();
 // ── Service catalog ──────────────────────────────────
 services.get("/catalog", async (c) => {
   const includeInactive = c.req.query("all") === "1";
-  const db = getServerDb();
+  const db = await getTenantDb(c.get("user").property_id);
   let q = db
     .from("services")
     .select("*")
@@ -25,7 +25,7 @@ services.get("/catalog", async (c) => {
 services.post("/catalog", requireRole("admin", "manager"), async (c) => {
   const parsed = await parseBody(c, serviceCreateSchema);
   if (!parsed.ok) return parsed.response;
-  const db = getServerDb();
+  const db = await getTenantDb(c.get("user").property_id);
   const { data, error } = await db
     .from("services")
     .insert({ ...parsed.data, property_id: c.get("user").property_id })
@@ -38,7 +38,7 @@ services.post("/catalog", requireRole("admin", "manager"), async (c) => {
 services.put("/catalog/:id", requireRole("admin", "manager"), async (c) => {
   const parsed = await parseBody(c, serviceUpdateSchema);
   if (!parsed.ok) return parsed.response;
-  const db = getServerDb();
+  const db = await getTenantDb(c.get("user").property_id);
   const { data, error } = await db
     .from("services")
     .update(parsed.data)
@@ -51,7 +51,7 @@ services.put("/catalog/:id", requireRole("admin", "manager"), async (c) => {
 });
 
 services.delete("/catalog/:id", requireRole("admin", "manager"), async (c) => {
-  const db = getServerDb();
+  const db = await getTenantDb(c.get("user").property_id);
   const id = c.req.param("id") ?? "";
   // Soft-delete to keep folio history intact (reservation_services.service_id FK).
   const { error } = await db
@@ -69,7 +69,7 @@ services.get("/", async (c) => {
   if (!reservationId) {
     return c.json({ success: false, error: "reservation_id required" }, 400);
   }
-  const db = getServerDb();
+  const db = await getTenantDb(c.get("user").property_id);
   const { data, error } = await db
     .from("reservation_services")
     .select("*")
@@ -83,7 +83,7 @@ services.get("/", async (c) => {
 services.post("/", async (c) => {
   const parsed = await parseBody(c, serviceChargeSchema);
   if (!parsed.ok) return parsed.response;
-  const db = getServerDb();
+  const db = await getTenantDb(c.get("user").property_id);
   const user = c.get("user");
 
   // The reservation must belong to the caller's property.
@@ -115,7 +115,7 @@ services.post("/", async (c) => {
 });
 
 services.delete("/:id", async (c) => {
-  const db = getServerDb();
+  const db = await getTenantDb(c.get("user").property_id);
   const id = c.req.param("id") ?? "";
   const { error } = await db
     .from("reservation_services")

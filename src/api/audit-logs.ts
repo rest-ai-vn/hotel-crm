@@ -1,10 +1,10 @@
 import { Hono } from "hono";
-import { getServerDb } from "../db/supabase-client";
+import { getTenantDb } from "../db/tenant-db";
 
 const auditLogs = new Hono();
 
 auditLogs.get("/", async (c) => {
-  const db = getServerDb();
+  const db = await getTenantDb(c.get("user").property_id);
   const entity = c.req.query("entity");
   const action = c.req.query("action");
   const from = c.req.query("from");

@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { getServerDb } from "../db/supabase-client";
+import { getTenantDb } from "../db/tenant-db";
 import { parseBody } from "../lib/validate";
 import { nightAuditRunSchema } from "../lib/schemas";
 import { logAudit } from "../lib/audit";
@@ -18,7 +18,7 @@ interface PaymentRow {
 
 /** Day stats + no-show candidates for a business date. */
 async function buildDaySnapshot(propertyId: string, businessDate: string) {
-  const db = getServerDb();
+  const db = await getTenantDb(propertyId);
   const [candidatesRes, arrivalsRes, departuresRes, inHouseRes, paymentsRes, cashRes] =
     await Promise.all([
       // No-show candidates: still 'confirmed' but check_in already passed.
@@ -88,7 +88,7 @@ async function buildDaySnapshot(propertyId: string, businessDate: string) {
 }
 
 nightAudit.get("/", async (c) => {
-  const db = getServerDb();
+  const db = await getTenantDb(c.get("user").property_id);
   const limit = Math.min(Number(c.req.query("limit") || 30), 100);
   const { data, error } = await db
     .from("night_audits")
@@ -105,7 +105,7 @@ nightAudit.get("/preview", async (c) => {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
     return c.json({ success: false, error: "date must be YYYY-MM-DD" }, 400);
   }
-  const db = getServerDb();
+  const db = await getTenantDb(c.get("user").property_id);
   const pid = c.get("user").property_id;
   const { data: existing } = await db
     .from("night_audits")
@@ -131,7 +131,7 @@ nightAudit.post("/run", async (c) => {
   if (!parsed.ok) return parsed.response;
 
   const businessDate = parsed.data.business_date ?? todayIso();
-  const db = getServerDb();
+  const db = await getTenantDb(c.get("user").property_id);
   const user = c.get("user");
 
   const { data: existing } = await db

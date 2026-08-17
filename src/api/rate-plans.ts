@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { getServerDb } from "../db/supabase-client";
+import { getTenantDb } from "../db/tenant-db";
 import { parseBody } from "../lib/validate";
 import { ratePlanCreateSchema, ratePlanUpdateSchema } from "../lib/schemas";
 import { logAudit } from "../lib/audit";
@@ -7,7 +7,7 @@ import { logAudit } from "../lib/audit";
 const ratePlans = new Hono();
 
 ratePlans.get("/", async (c) => {
-  const db = getServerDb();
+  const db = await getTenantDb(c.get("user").property_id);
   const roomTypeId = c.req.query("room_type_id");
 
   let query = db
@@ -29,7 +29,7 @@ ratePlans.post("/", async (c) => {
   const parsed = await parseBody(c, ratePlanCreateSchema);
   if (!parsed.ok) return parsed.response;
 
-  const db = getServerDb();
+  const db = await getTenantDb(c.get("user").property_id);
   const { data, error } = await db
     .from("rate_plans")
     .insert({ ...parsed.data, property_id: c.get("user").property_id })
@@ -48,7 +48,7 @@ ratePlans.put("/:id", async (c) => {
   if (!parsed.ok) return parsed.response;
 
   const id = c.req.param("id");
-  const db = getServerDb();
+  const db = await getTenantDb(c.get("user").property_id);
   const { data, error } = await db
     .from("rate_plans")
     .update(parsed.data)
@@ -63,7 +63,7 @@ ratePlans.put("/:id", async (c) => {
 
 ratePlans.delete("/:id", async (c) => {
   const id = c.req.param("id");
-  const db = getServerDb();
+  const db = await getTenantDb(c.get("user").property_id);
   const pid = c.get("user").property_id;
   const { data: existing } = await db
     .from("rate_plans")

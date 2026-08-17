@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { getServerDb } from "../db/supabase-client";
+import { getTenantDb } from "../db/tenant-db";
 import { parseBody } from "../lib/validate";
 import { paymentCreateSchema } from "../lib/schemas";
 import { requireRole } from "../middleware/auth";
@@ -15,7 +15,7 @@ payments.get("/vietqr", async (c) => {
   if (!reservationId) {
     return c.json({ success: false, error: "reservation_id required" }, 400);
   }
-  const db = getServerDb();
+  const db = await getTenantDb(c.get("user").property_id);
   const user = c.get("user");
 
   const [resRes, paysRes, propRes] = await Promise.all([
@@ -65,7 +65,7 @@ payments.get("/", async (c) => {
     return c.json({ success: false, error: "reservation_id required" }, 400);
   }
 
-  const db = getServerDb();
+  const db = await getTenantDb(c.get("user").property_id);
   const { data, error } = await db
     .from("payments")
     .select("*")
@@ -81,7 +81,7 @@ payments.post("/", async (c) => {
   const parsed = await parseBody(c, paymentCreateSchema);
   if (!parsed.ok) return parsed.response;
 
-  const db = getServerDb();
+  const db = await getTenantDb(c.get("user").property_id);
   const user = c.get("user");
 
   // The reservation must belong to the caller's property.
@@ -115,7 +115,7 @@ payments.post("/", async (c) => {
 // Deleting a payment erases money history — manager/admin only, always audited.
 payments.delete("/:id", requireRole("admin", "manager"), async (c) => {
   const id = c.req.param("id") ?? "";
-  const db = getServerDb();
+  const db = await getTenantDb(c.get("user").property_id);
   const user = c.get("user");
 
   const { data: existing } = await db

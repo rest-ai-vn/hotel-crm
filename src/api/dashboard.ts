@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { getServerDb } from "../db/supabase-client";
+import { getTenantDb } from "../db/tenant-db";
 
 const dashboard = new Hono();
 
@@ -28,7 +28,7 @@ interface ReservationRow {
 }
 
 dashboard.get("/summary", async (c) => {
-  const db = getServerDb();
+  const db = await getTenantDb(c.get("user").property_id);
   const today = todayIso();
   const pid = c.get("user").property_id;
 

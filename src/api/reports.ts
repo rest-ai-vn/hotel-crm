@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 import { getServerDb } from "../db/supabase-client";
+import { getTenantDb } from "../db/tenant-db";
 import { computeRevenueKpis, daysInRange } from "../lib/reports";
 
 const reports = new Hono();
@@ -34,7 +35,7 @@ interface ResRow {
 reports.get("/revenue", async (c) => {
   const from = c.req.query("from") || firstOfMonthIso();
   const to = c.req.query("to") || todayIso();
-  const db = getServerDb();
+  const db = await getTenantDb(c.get("user").property_id);
 
   const pid = c.get("user").property_id;
   const [resRes, roomsRes] = await Promise.all([
@@ -104,7 +105,7 @@ reports.get("/breakdown", async (c) => {
   const by = (c.req.query("by") || "source") as BreakdownKey;
   const from = c.req.query("from") || firstOfMonthIso();
   const to = c.req.query("to") || todayIso();
-  const db = getServerDb();
+  const db = await getTenantDb(c.get("user").property_id);
   const pid = c.get("user").property_id;
   const map = new Map<string, BreakdownRow>();
 
@@ -183,7 +184,7 @@ reports.get("/breakdown", async (c) => {
 
 // ── Receivables (công nợ theo công ty) ──
 reports.get("/receivables", async (c) => {
-  const db = getServerDb();
+  const db = await getTenantDb(c.get("user").property_id);
   const pid = c.get("user").property_id;
 
   const { data, error } = await db
@@ -310,7 +311,7 @@ reports.get("/residence", async (c) => {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
     return c.json({ success: false, error: "date must be YYYY-MM-DD" }, 400);
   }
-  const db = getServerDb();
+  const db = await getTenantDb(c.get("user").property_id);
   const { data, error } = await db
     .from("reservations")
     .select(

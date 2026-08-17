@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import { z } from "zod";
 import { getServerDb } from "../db/supabase-client";
+import { getTenantDb } from "../db/tenant-db";
 import { signStaffToken, verifyStaffToken } from "../lib/jwt";
 import { requireAuth, requireRole } from "../middleware/auth";
 import { createRateLimiter } from "../lib/rate-limit";
@@ -106,20 +107,26 @@ auth.get("/me", async (c) => {
   try {
     const payload = await verifyStaffToken(token);
     const db = getServerDb();
-    const { data: staff } = await db
-      .from("staff")
-      .select("id, name, email, role, is_active, property_id, properties(name, code)")
-      .eq("id", payload.sub)
-      .eq("is_active", true)
-      .maybeSingle();
+    const [{ data: staff }, { data: prop }] = await Promise.all([
+      db
+        .from("staff")
+        .select("id, name, email, role, is_active")
+        .eq("id", payload.sub)
+        .eq("is_active", true)
+        .maybeSingle(),
+      // The ACTIVE property comes from the token claim (admins can switch),
+      // not from the staff row's home property.
+      db.from("properties").select("name").eq("id", payload.property_id).maybeSingle(),
+    ]);
 
     if (!staff) return c.json({ success: false, error: "User not found" }, 401);
-    const { properties, ...rest } = staff as typeof staff & {
-      properties: { name: string; code: string } | null;
-    };
     return c.json({
       success: true,
-      data: { ...rest, property_name: properties?.name ?? null },
+      data: {
+        ...staff,
+        property_id: payload.property_id,
+        property_name: prop?.name ?? null,
+      },
     });
   } catch {
     return c.json({ success: false, error: "Invalid or expired token" }, 401);
@@ -188,9 +195,47 @@ auth.post("/change-password", requireAuth, async (c) => {
   return c.json({ success: true, data: { id: user.sub } });
 });
 
+// Admin may operate any property with one account: issue a fresh token whose
+// tenant claim points at the requested property.
+auth.post("/switch-property", requireAuth, requireRole("admin"), async (c) => {
+  const parsed = z
+    .object({ property_id: z.string().uuid() })
+    .safeParse(await c.req.json().catch(() => ({})));
+  if (!parsed.success) {
+    return c.json({ success: false, error: "property_id không hợp lệ" }, 400);
+  }
+
+  const db = getServerDb();
+  const { data: prop } = await db
+    .from("properties")
+    .select("id, name")
+    .eq("id", parsed.data.property_id)
+    .eq("is_active", true)
+    .maybeSingle();
+  if (!prop) return c.json({ success: false, error: "Cơ sở không tồn tại" }, 404);
+
+  const user = c.get("user");
+  const token = await signStaffToken({
+    sub: user.sub,
+    email: user.email,
+    role: user.role,
+    name: user.name,
+    property_id: prop.id,
+  });
+
+  await logAudit(db, user, "staff.switch_property", "staff", user.sub, {
+    to_property_id: prop.id,
+    to_property_name: prop.name,
+  });
+  return c.json({
+    success: true,
+    data: { token, property_id: prop.id, property_name: prop.name },
+  });
+});
+
 // Lightweight staff list (id + name) for assignment dropdowns — any role.
 auth.get("/staff-lite", requireAuth, async (c) => {
-  const db = getServerDb();
+  const db = await getTenantDb(c.get("user").property_id);
   const { data, error } = await db
     .from("staff")
     .select("id, name, role")

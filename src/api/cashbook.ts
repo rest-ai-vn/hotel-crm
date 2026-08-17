@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { getServerDb } from "../db/supabase-client";
+import { getTenantDb } from "../db/tenant-db";
 import { parseBody } from "../lib/validate";
 import { cashTxnCreateSchema } from "../lib/schemas";
 import { requireRole } from "../middleware/auth";
@@ -13,7 +13,7 @@ interface CashRow {
 }
 
 cashbook.get("/", async (c) => {
-  const db = getServerDb();
+  const db = await getTenantDb(c.get("user").property_id);
   const from = c.req.query("from");
   const to = c.req.query("to");
   const direction = c.req.query("direction");
@@ -33,7 +33,7 @@ cashbook.get("/", async (c) => {
 });
 
 cashbook.get("/summary", async (c) => {
-  const db = getServerDb();
+  const db = await getTenantDb(c.get("user").property_id);
   const from = c.req.query("from");
   const to = c.req.query("to");
 
@@ -63,7 +63,7 @@ cashbook.get("/summary", async (c) => {
 cashbook.post("/", async (c) => {
   const parsed = await parseBody(c, cashTxnCreateSchema);
   if (!parsed.ok) return parsed.response;
-  const db = getServerDb();
+  const db = await getTenantDb(c.get("user").property_id);
   const user = c.get("user");
   const insert: Record<string, unknown> = {
     direction: parsed.data.direction,
@@ -83,7 +83,7 @@ cashbook.post("/", async (c) => {
 });
 
 cashbook.delete("/:id", requireRole("admin", "manager"), async (c) => {
-  const db = getServerDb();
+  const db = await getTenantDb(c.get("user").property_id);
   const id = c.req.param("id") ?? "";
   const pid = c.get("user").property_id;
   const { data: existing } = await db

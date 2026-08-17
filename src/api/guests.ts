@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { getServerDb } from "../db/supabase-client";
+import { getTenantDb } from "../db/tenant-db";
 import { parseBody } from "../lib/validate";
 import {
   guestCreateSchema,
@@ -10,7 +10,7 @@ import {
 const guests = new Hono();
 
 guests.get("/", async (c) => {
-  const db = getServerDb();
+  const db = await getTenantDb(c.get("user").property_id);
   const search = c.req.query("q");
   const limit = Math.min(Number(c.req.query("limit") || 50), 200);
   const offset = Math.max(Number(c.req.query("offset") || 0), 0);
@@ -34,7 +34,7 @@ guests.get("/", async (c) => {
 
 guests.get("/:id", async (c) => {
   const id = c.req.param("id");
-  const db = getServerDb();
+  const db = await getTenantDb(c.get("user").property_id);
   const { data, error } = await db
     .from("guests")
     .select("*")
@@ -51,7 +51,7 @@ guests.post("/", async (c) => {
   const parsed = await parseBody(c, guestCreateSchema);
   if (!parsed.ok) return parsed.response;
 
-  const db = getServerDb();
+  const db = await getTenantDb(c.get("user").property_id);
   const { data, error } = await db
     .from("guests")
     .insert({ ...parsed.data, property_id: c.get("user").property_id })
@@ -67,7 +67,7 @@ guests.put("/:id", async (c) => {
   if (!parsed.ok) return parsed.response;
 
   const id = c.req.param("id");
-  const db = getServerDb();
+  const db = await getTenantDb(c.get("user").property_id);
   const { data, error } = await db
     .from("guests")
     .update(parsed.data)
@@ -84,7 +84,7 @@ guests.post("/find-or-create", async (c) => {
   const parsed = await parseBody(c, guestFindOrCreateSchema);
   if (!parsed.ok) return parsed.response;
   const { phone, zalo_id, facebook_id, name } = parsed.data;
-  const db = getServerDb();
+  const db = await getTenantDb(c.get("user").property_id);
   const pid = c.get("user").property_id;
 
   if (zalo_id) {

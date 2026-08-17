@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { getServerDb } from "../db/supabase-client";
+import { getTenantDb } from "../db/tenant-db";
 import { parseBody } from "../lib/validate";
 import {
   reservationCancelSchema,
@@ -42,7 +42,7 @@ reservations.get("/quote", async (c) => {
     return c.json({ success: false, error: "dates must be YYYY-MM-DD" }, 400);
   }
 
-  const db = getServerDb();
+  const db = await getTenantDb(c.get("user").property_id);
   const pid = c.get("user").property_id;
   const { data: plans, error } = await db
     .from("rate_plans")
@@ -161,7 +161,7 @@ reservations.get("/quote", async (c) => {
 });
 
 reservations.get("/availability", async (c) => {
-  const db = getServerDb();
+  const db = await getTenantDb(c.get("user").property_id);
   const roomTypeId = c.req.query("room_type_id");
   const date = c.req.query("date");
 
@@ -200,7 +200,7 @@ reservations.get("/availability", async (c) => {
 });
 
 reservations.get("/", async (c) => {
-  const db = getServerDb();
+  const db = await getTenantDb(c.get("user").property_id);
   const from = c.req.query("from");
   const to = c.req.query("to");
   const status = c.req.query("status");
@@ -231,7 +231,7 @@ reservations.get("/", async (c) => {
 
 reservations.get("/:id", async (c) => {
   const id = c.req.param("id");
-  const db = getServerDb();
+  const db = await getTenantDb(c.get("user").property_id);
   const { data, error } = await db
     .from("reservations")
     .select("*, guests(name, phone, id_number), room_types(name), rooms(number, floor)")
@@ -248,7 +248,7 @@ reservations.post("/", async (c) => {
   const parsed = await parseBody(c, reservationCreateSchema);
   if (!parsed.ok) return parsed.response;
 
-  const db = getServerDb();
+  const db = await getTenantDb(c.get("user").property_id);
   const user = c.get("user");
 
   // Overbooking guard: block when every room of this type is already taken
@@ -358,7 +358,7 @@ reservations.put("/:id", async (c) => {
   if (!parsed.ok) return parsed.response;
 
   const id = c.req.param("id");
-  const db = getServerDb();
+  const db = await getTenantDb(c.get("user").property_id);
   const pid = c.get("user").property_id;
 
   // Assigning a room must not double-book it for overlapping dates.
@@ -403,7 +403,7 @@ reservations.post("/:id/cancel", async (c) => {
   if (!parsed.ok) return parsed.response;
 
   const id = c.req.param("id");
-  const db = getServerDb();
+  const db = await getTenantDb(c.get("user").property_id);
   const { data, error } = await db
     .from("reservations")
     .update({
@@ -429,7 +429,7 @@ reservations.post("/:id/check-in", async (c) => {
 
   const id = c.req.param("id");
   const { room_id } = parsed.data;
-  const db = getServerDb();
+  const db = await getTenantDb(c.get("user").property_id);
   const pid = c.get("user").property_id;
 
   // The room being assigned must belong to the caller's property.
@@ -459,7 +459,7 @@ reservations.post("/:id/check-in", async (c) => {
 
 reservations.post("/:id/check-out", async (c) => {
   const id = c.req.param("id");
-  const db = getServerDb();
+  const db = await getTenantDb(c.get("user").property_id);
 
   const { data: reservation, error: fetchErr } = await db
     .from("reservations")
@@ -519,7 +519,7 @@ reservations.post("/:id/no-show", async (c) => {
   if (!parsed.ok) return parsed.response;
 
   const id = c.req.param("id");
-  const db = getServerDb();
+  const db = await getTenantDb(c.get("user").property_id);
   const { data, error } = await db
     .from("reservations")
     .update({ status: "no_show" })
@@ -568,7 +568,7 @@ reservations.post("/:id/move-room", async (c) => {
   if (!parsed.ok) return parsed.response;
 
   const id = c.req.param("id");
-  const db = getServerDb();
+  const db = await getTenantDb(c.get("user").property_id);
 
   const pid = c.get("user").property_id;
   const { data: reservation, error: fetchErr } = await db
@@ -629,7 +629,7 @@ reservations.post("/:id/extend", async (c) => {
   if (!parsed.ok) return parsed.response;
 
   const id = c.req.param("id");
-  const db = getServerDb();
+  const db = await getTenantDb(c.get("user").property_id);
 
   const { data: reservation, error: fetchErr } = await db
     .from("reservations")

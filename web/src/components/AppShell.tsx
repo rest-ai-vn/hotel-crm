@@ -1,8 +1,9 @@
 import { useState } from "react";
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
+import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "../lib/auth-context";
-import { apiFetch } from "../lib/api";
-import { ChatWidget } from "./ChatWidget";
+import { apiFetch, setToken } from "../lib/api";
+import type { Property } from "../lib/types";
 
 type NavItem = {
   to: string;
@@ -52,11 +53,7 @@ export function AppShell() {
       >
         <div style={{ padding: "0 var(--space-3) var(--space-4)" }}>
           <div style={{ fontSize: 18, fontWeight: 700, letterSpacing: "-0.01em" }}>Hotel CRM</div>
-          {user?.property_name ? (
-            <div className="muted" style={{ fontSize: 12, marginTop: 2 }}>
-              🏢 {user.property_name}
-            </div>
-          ) : null}
+          <PropertyBadge />
         </div>
         <nav style={{ display: "flex", flexDirection: "column", gap: 2 }}>
           {NAV_ITEMS.filter(
@@ -116,8 +113,55 @@ export function AppShell() {
         <Outlet />
       </main>
       {showPassword ? <ChangePasswordModal onClose={() => setShowPassword(false)} /> : null}
-      <ChatWidget />
     </div>
+  );
+}
+
+function PropertyBadge() {
+  const { user } = useAuth();
+  const isAdmin = user?.role === "admin";
+
+  const properties = useQuery({
+    queryKey: ["properties"],
+    queryFn: () => apiFetch<Property[]>("/api/properties"),
+    enabled: isAdmin,
+  });
+
+  async function switchTo(propertyId: string) {
+    if (!propertyId || propertyId === user?.property_id) return;
+    const data = await apiFetch<{ token: string }>("/api/auth/switch-property", {
+      method: "POST",
+      body: { property_id: propertyId },
+    });
+    setToken(data.token);
+    window.location.reload();
+  }
+
+  if (!user?.property_name) return null;
+  const list = (properties.data ?? []).filter((p) => p.is_active);
+
+  if (!isAdmin || list.length <= 1) {
+    return (
+      <div className="muted" style={{ fontSize: 12, marginTop: 2 }}>
+        🏢 {user.property_name}
+      </div>
+    );
+  }
+
+  return (
+    <select
+      className="input"
+      style={{ marginTop: 4, height: 30, fontSize: 12, width: "100%" }}
+      value={user.property_id ?? ""}
+      onChange={(e) => switchTo(e.target.value)}
+      title="Chuyển cơ sở đang thao tác"
+    >
+      {list.map((p) => (
+        <option key={p.id} value={p.id}>
+          🏢 {p.name}
+        </option>
+      ))}
+    </select>
   );
 }
 

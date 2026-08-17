@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { getServerDb } from "../db/supabase-client";
+import { getTenantDb } from "../db/tenant-db";
 import { parseBody } from "../lib/validate";
 import {
   roomAssignSchema,
@@ -12,7 +12,7 @@ import {
 const rooms = new Hono();
 
 rooms.get("/types", async (c) => {
-  const db = getServerDb();
+  const db = await getTenantDb(c.get("user").property_id);
   const includeInactive = c.req.query("all") === "1";
   let q = db
     .from("room_types")
@@ -30,7 +30,7 @@ rooms.post("/types", async (c) => {
   const parsed = await parseBody(c, roomTypeCreateSchema);
   if (!parsed.ok) return parsed.response;
 
-  const db = getServerDb();
+  const db = await getTenantDb(c.get("user").property_id);
   const { data, error } = await db
     .from("room_types")
     .insert({ ...parsed.data, property_id: c.get("user").property_id })
@@ -46,7 +46,7 @@ rooms.put("/types/:id", async (c) => {
   if (!parsed.ok) return parsed.response;
 
   const id = c.req.param("id");
-  const db = getServerDb();
+  const db = await getTenantDb(c.get("user").property_id);
   const { data, error } = await db
     .from("room_types")
     .update(parsed.data)
@@ -60,7 +60,7 @@ rooms.put("/types/:id", async (c) => {
 });
 
 rooms.get("/", async (c) => {
-  const db = getServerDb();
+  const db = await getTenantDb(c.get("user").property_id);
   const floor = c.req.query("floor");
   const status = c.req.query("status");
   const typeId = c.req.query("type_id");
@@ -83,7 +83,7 @@ rooms.post("/", async (c) => {
   const parsed = await parseBody(c, roomCreateSchema);
   if (!parsed.ok) return parsed.response;
 
-  const db = getServerDb();
+  const db = await getTenantDb(c.get("user").property_id);
   const { data, error } = await db
     .from("rooms")
     .insert({ ...parsed.data, property_id: c.get("user").property_id })
@@ -99,7 +99,7 @@ rooms.patch("/:id/status", async (c) => {
   if (!parsed.ok) return parsed.response;
 
   const id = c.req.param("id");
-  const db = getServerDb();
+  const db = await getTenantDb(c.get("user").property_id);
   const update: Record<string, unknown> = { status: parsed.data.status };
   if (parsed.data.status === "available") {
     update.last_cleaned_at = new Date().toISOString();
@@ -122,7 +122,7 @@ rooms.patch("/:id/assign", async (c) => {
   if (!parsed.ok) return parsed.response;
 
   const id = c.req.param("id") ?? "";
-  const db = getServerDb();
+  const db = await getTenantDb(c.get("user").property_id);
   const { data, error } = await db
     .from("rooms")
     .update({ cleaning_assignee: parsed.data.staff_id })
