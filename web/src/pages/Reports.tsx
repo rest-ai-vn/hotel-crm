@@ -74,9 +74,9 @@ export function Reports() {
           <div className="muted">Doanh thu · Công suất · ADR · RevPAR · Khai báo lưu trú</div>
         </div>
         <div className="row" style={{ gap: "var(--space-2)", alignItems: "center" }}>
-          <input type="date" value={from} max={to} onChange={(e) => setFrom(e.target.value)} />
+          <input type="date" className="input" style={{ width: "auto" }} value={from} max={to} onChange={(e) => setFrom(e.target.value)} />
           <span className="muted">→</span>
-          <input type="date" value={to} min={from} max={todayIso()} onChange={(e) => setTo(e.target.value)} />
+          <input type="date" className="input" style={{ width: "auto" }} value={to} min={from} max={todayIso()} onChange={(e) => setTo(e.target.value)} />
         </div>
       </div>
 

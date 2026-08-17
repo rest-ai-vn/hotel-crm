@@ -12,13 +12,15 @@ const rooms = new Hono();
 
 rooms.get("/types", async (c) => {
   const db = getServerDb();
-  const { data, error } = await db
+  const includeInactive = c.req.query("all") === "1";
+  let q = db
     .from("room_types")
     .select("*")
     .eq("property_id", c.get("user").property_id)
-    .eq("is_active", true)
     .order("sort_order");
+  if (!includeInactive) q = q.eq("is_active", true);
 
+  const { data, error } = await q;
   if (error) return c.json({ success: false, error: error.message }, 500);
   return c.json({ success: true, data });
 });
