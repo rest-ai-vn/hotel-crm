@@ -2,6 +2,7 @@
 // prices are recomputed server-side, and booking is rate-limited + honeypotted.
 import { Hono } from "hono";
 import { getServerDb } from "../db/supabase-client";
+import { getTenantDb } from "../db/tenant-db";
 import { parseBody } from "../lib/validate";
 import { publicBookSchema } from "../lib/schemas";
 import {
@@ -49,7 +50,7 @@ async function computeOffer(
   checkIn: string,
   checkOut: string,
 ) {
-  const db = getServerDb();
+  const db = await getTenantDb(propertyId);
   const [plansRes, overridesRes, totalRes, bookedRes] = await Promise.all([
     db
       .from("rate_plans")
@@ -106,7 +107,7 @@ publicApi.get("/hotel", async (c) => {
   const property = await findProperty(code);
   if (!property) return c.json({ success: false, error: "Không tìm thấy khách sạn" }, 404);
 
-  const db = getServerDb();
+  const db = await getTenantDb(property.id);
   const { data: types } = await db
     .from("room_types")
     .select("id, name, code, max_guests, description")
@@ -189,7 +190,7 @@ publicApi.post("/book", async (c) => {
     return c.json({ success: false, error: "Hết phòng loại này trong khoảng ngày đã chọn" }, 409);
   }
 
-  const db = getServerDb();
+  const db = await getTenantDb(property.id);
   // Find-or-create guest by phone within this property.
   let guestId: string;
   const { data: existingGuest } = await db
