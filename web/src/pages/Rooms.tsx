@@ -13,15 +13,6 @@ const STATUS_LABEL: Record<RoomStatus, string> = {
   out_of_order: "Hỏng",
 };
 
-const STATUS_PILL: Record<RoomStatus, string> = {
-  available: "success",
-  reserved: "info",
-  occupied: "warning",
-  cleaning: "neutral",
-  maintenance: "neutral",
-  out_of_order: "danger",
-};
-
 const STATUS_OPTIONS: RoomStatus[] = [
   "available",
   "reserved",
@@ -31,29 +22,35 @@ const STATUS_OPTIONS: RoomStatus[] = [
   "out_of_order",
 ];
 
+// Tile colors per status — dense room map that stays readable at 100+ rooms.
+const TILE_STYLE: Record<RoomStatus, { bg: string; border: string; text: string }> = {
+  available: { bg: "oklch(96% 0.05 145)", border: "oklch(80% 0.09 145)", text: "oklch(35% 0.14 145)" },
+  reserved: { bg: "oklch(95% 0.04 230)", border: "oklch(80% 0.07 230)", text: "oklch(38% 0.13 230)" },
+  occupied: { bg: "oklch(96% 0.07 80)", border: "oklch(80% 0.1 80)", text: "oklch(38% 0.14 80)" },
+  cleaning: { bg: "oklch(96% 0.005 250)", border: "oklch(85% 0.01 250)", text: "oklch(45% 0.02 250)" },
+  maintenance: { bg: "oklch(95% 0.03 300)", border: "oklch(82% 0.06 300)", text: "oklch(40% 0.1 300)" },
+  out_of_order: { bg: "oklch(95% 0.05 25)", border: "oklch(82% 0.09 25)", text: "oklch(38% 0.18 25)" },
+};
+
 export function Rooms() {
   const qc = useQueryClient();
   const { user } = useAuth();
   const canManage = user?.role === "admin" || user?.role === "manager";
   const [statusFilter, setStatusFilter] = useState<RoomStatus | "">("");
   const [typeFilter, setTypeFilter] = useState<string>("");
-  const [floorFilter, setFloorFilter] = useState<string>("");
+  const [search, setSearch] = useState("");
+  const [picker, setPicker] = useState<Room | null>(null);
 
   const typesQuery = useQuery({
     queryKey: ["roomTypes"],
     queryFn: () => apiFetch<RoomType[]>("/api/rooms/types"),
   });
 
+  // Fetch once; filter client-side so the status counters stay free and instant.
   const roomsQuery = useQuery({
-    queryKey: ["rooms", statusFilter, typeFilter, floorFilter],
-    queryFn: () =>
-      apiFetch<Room[]>("/api/rooms", {
-        query: {
-          status: statusFilter || undefined,
-          type_id: typeFilter || undefined,
-          floor: floorFilter || undefined,
-        },
-      }),
+    queryKey: ["rooms", "all"],
+    queryFn: () => apiFetch<Room[]>("/api/rooms"),
+    refetchInterval: 30_000,
   });
 
   const updateStatus = useMutation({
@@ -62,10 +59,25 @@ export function Rooms() {
         method: "PATCH",
         body: { status },
       }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["rooms"] }),
+    onSuccess: () => {
+      setPicker(null);
+      qc.invalidateQueries({ queryKey: ["rooms"] });
+      qc.invalidateQueries({ queryKey: ["dashboard-summary"] });
+    },
   });
 
-  const rooms = roomsQuery.data ?? [];
+  const allRooms = roomsQuery.data ?? [];
+  const counts = allRooms.reduce<Record<string, number>>((acc, r) => {
+    acc[r.status] = (acc[r.status] ?? 0) + 1;
+    return acc;
+  }, {});
+
+  const rooms = allRooms.filter(
+    (r) =>
+      (!statusFilter || r.status === statusFilter) &&
+      (!typeFilter || r.room_type_id === typeFilter) &&
+      (!search || r.number.includes(search)),
+  );
   const byFloor = rooms.reduce<Record<number, Room[]>>((acc, r) => {
     (acc[r.floor] ??= []).push(r);
     return acc;
@@ -75,29 +87,48 @@ export function Rooms() {
     .sort((a, b) => a - b);
 
   return (
-    <div className="stack" style={{ gap: "var(--space-5)" }}>
+    <div className="stack" style={{ gap: "var(--space-4)" }}>
       <div className="row" style={{ justifyContent: "space-between" }}>
         <div>
           <h1 style={{ margin: 0, fontSize: 24, letterSpacing: "-0.01em" }}>Phòng</h1>
-          <div className="muted">{rooms.length} phòng</div>
+          <div className="muted">
+            {rooms.length}/{allRooms.length} phòng · bấm vào ô phòng để đổi trạng thái
+          </div>
         </div>
       </div>
 
       <div className="card" style={{ padding: "var(--space-3)" }}>
-        <div className="row" style={{ flexWrap: "wrap", gap: "var(--space-3)" }}>
-          <select
+        <div className="row" style={{ flexWrap: "wrap", gap: "var(--space-2)" }}>
+          {STATUS_OPTIONS.map((s) => {
+            const active = statusFilter === s;
+            const t = TILE_STYLE[s];
+            return (
+              <button
+                key={s}
+                onClick={() => setStatusFilter(active ? "" : s)}
+                className="pill"
+                style={{
+                  cursor: "pointer",
+                  background: t.bg,
+                  borderColor: active ? t.text : t.border,
+                  color: t.text,
+                  fontWeight: active ? 700 : 500,
+                  boxShadow: active ? `0 0 0 2px ${t.border}` : "none",
+                }}
+              >
+                {STATUS_LABEL[s]} {counts[s] ?? 0}
+              </button>
+            );
+          })}
+          <div className="spacer" />
+          <input
             className="input"
-            style={{ width: "auto" }}
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value as RoomStatus | "")}
-          >
-            <option value="">Mọi trạng thái</option>
-            {STATUS_OPTIONS.map((s) => (
-              <option key={s} value={s}>
-                {STATUS_LABEL[s]}
-              </option>
-            ))}
-          </select>
+            style={{ width: 120 }}
+            placeholder="🔍 Số phòng"
+            inputMode="numeric"
+            value={search}
+            onChange={(e) => setSearch(e.target.value.trim())}
+          />
           <select
             className="input"
             style={{ width: "auto" }}
@@ -111,13 +142,6 @@ export function Rooms() {
               </option>
             ))}
           </select>
-          <input
-            className="input"
-            style={{ width: 100 }}
-            placeholder="Tầng"
-            value={floorFilter}
-            onChange={(e) => setFloorFilter(e.target.value.replace(/[^0-9]/g, ""))}
-          />
         </div>
       </div>
 
@@ -132,41 +156,155 @@ export function Rooms() {
           <div className="muted">Không có phòng nào khớp bộ lọc</div>
         </div>
       ) : (
-        <div className="stack" style={{ gap: "var(--space-5)" }}>
+        <div className="stack" style={{ gap: "var(--space-4)" }}>
           {sortedFloors.map((floor) => (
             <section key={floor}>
               <div
                 style={{
-                  fontSize: 12,
+                  fontSize: 11,
                   textTransform: "uppercase",
                   letterSpacing: "0.06em",
                   color: "var(--color-text-soft)",
-                  marginBottom: "var(--space-2)",
+                  marginBottom: 6,
                 }}
               >
-                Tầng {floor}
+                Tầng {floor} · {byFloor[floor]!.length} phòng
               </div>
               <div
                 style={{
                   display: "grid",
-                  gridTemplateColumns: "repeat(auto-fill, minmax(140px, 1fr))",
-                  gap: "var(--space-3)",
+                  gridTemplateColumns: "repeat(auto-fill, minmax(86px, 1fr))",
+                  gap: 8,
                 }}
               >
-                {byFloor[floor]!.map((room) => (
-                  <RoomCard
-                    key={room.id}
-                    room={room}
-                    onChangeStatus={(status) => updateStatus.mutate({ id: room.id, status })}
-                  />
-                ))}
+                {byFloor[floor]!.map((room) => {
+                  const t = TILE_STYLE[room.status];
+                  return (
+                    <button
+                      key={room.id}
+                      onClick={() => setPicker(room)}
+                      title={`${room.number} · ${room.room_types?.name ?? ""} · ${STATUS_LABEL[room.status]}`}
+                      style={{
+                        border: `1px solid ${t.border}`,
+                        background: t.bg,
+                        color: t.text,
+                        borderRadius: "var(--radius-md)",
+                        padding: "8px 6px",
+                        textAlign: "center",
+                        cursor: "pointer",
+                        transition: "transform 80ms ease, box-shadow 80ms ease",
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.boxShadow = "var(--shadow-md)";
+                        e.currentTarget.style.transform = "translateY(-1px)";
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.boxShadow = "none";
+                        e.currentTarget.style.transform = "none";
+                      }}
+                    >
+                      <div style={{ fontSize: 16, fontWeight: 700, lineHeight: 1.2 }}>
+                        {room.number}
+                      </div>
+                      <div style={{ fontSize: 10, opacity: 0.85, letterSpacing: "0.03em" }}>
+                        {room.room_types?.code ?? ""}
+                      </div>
+                    </button>
+                  );
+                })}
               </div>
             </section>
           ))}
         </div>
       )}
 
+      {picker ? (
+        <StatusPickerModal
+          room={picker}
+          busy={updateStatus.isPending}
+          onClose={() => setPicker(null)}
+          onPick={(status) => updateStatus.mutate({ id: picker.id, status })}
+        />
+      ) : null}
+
       {canManage ? <RoomTypesSection /> : null}
+    </div>
+  );
+}
+
+function StatusPickerModal({
+  room,
+  busy,
+  onClose,
+  onPick,
+}: {
+  room: Room;
+  busy: boolean;
+  onClose: () => void;
+  onPick: (status: RoomStatus) => void;
+}) {
+  return (
+    <div
+      onClick={onClose}
+      style={{
+        position: "fixed",
+        inset: 0,
+        background: "oklch(0% 0 0 / 0.35)",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        zIndex: 70,
+        padding: "var(--space-4)",
+      }}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          background: "var(--color-surface)",
+          width: 300,
+          maxWidth: "100%",
+          borderRadius: "var(--radius-lg)",
+          boxShadow: "var(--shadow-md)",
+          padding: "var(--space-4)",
+        }}
+      >
+        <div className="row" style={{ justifyContent: "space-between", marginBottom: "var(--space-3)" }}>
+          <div>
+            <div style={{ fontSize: 18, fontWeight: 700 }}>Phòng {room.number}</div>
+            <div className="muted" style={{ fontSize: 12 }}>
+              {room.room_types?.name ?? ""} · Tầng {room.floor}
+            </div>
+          </div>
+          <button className="btn btn-ghost" onClick={onClose}>✕</button>
+        </div>
+        <div className="stack" style={{ gap: 6 }}>
+          {STATUS_OPTIONS.map((s) => {
+            const t = TILE_STYLE[s];
+            const current = room.status === s;
+            return (
+              <button
+                key={s}
+                disabled={busy || current}
+                onClick={() => onPick(s)}
+                style={{
+                  border: `1px solid ${t.border}`,
+                  background: t.bg,
+                  color: t.text,
+                  borderRadius: "var(--radius-md)",
+                  padding: "9px 12px",
+                  textAlign: "left",
+                  fontWeight: current ? 700 : 500,
+                  cursor: current ? "default" : "pointer",
+                  opacity: busy ? 0.6 : 1,
+                }}
+              >
+                {STATUS_LABEL[s]}
+                {current ? " ✓ (hiện tại)" : ""}
+              </button>
+            );
+          })}
+        </div>
+      </div>
     </div>
   );
 }
@@ -441,71 +579,6 @@ function RoomTypeModal({
           </button>
         </div>
       </div>
-    </div>
-  );
-}
-
-function RoomCard({
-  room,
-  onChangeStatus,
-}: {
-  room: Room;
-  onChangeStatus: (status: RoomStatus) => void;
-}) {
-  const [open, setOpen] = useState(false);
-
-  return (
-    <div className="card" style={{ padding: "var(--space-3)", position: "relative" }}>
-      <div className="row" style={{ justifyContent: "space-between", marginBottom: 6 }}>
-        <div style={{ fontSize: 18, fontWeight: 600 }}>{room.number}</div>
-        <span className={`pill ${STATUS_PILL[room.status]}`}>{STATUS_LABEL[room.status]}</span>
-      </div>
-      <div className="muted" style={{ fontSize: 12 }}>
-        {room.room_types?.name ?? "—"}
-      </div>
-      <button
-        className="btn btn-ghost"
-        onClick={() => setOpen((v) => !v)}
-        style={{ marginTop: "var(--space-2)", width: "100%", padding: "4px 8px", fontSize: 12 }}
-      >
-        Đổi trạng thái
-      </button>
-      {open ? (
-        <div
-          className="card"
-          style={{
-            position: "absolute",
-            top: "100%",
-            left: 0,
-            right: 0,
-            marginTop: 4,
-            padding: 4,
-            zIndex: 10,
-            display: "grid",
-            gap: 2,
-          }}
-        >
-          {STATUS_OPTIONS.map((s) => (
-            <button
-              key={s}
-              className="btn btn-ghost"
-              style={{
-                justifyContent: "flex-start",
-                padding: "6px 10px",
-                fontWeight: room.status === s ? 600 : 400,
-              }}
-              onClick={() => {
-                setOpen(false);
-                if (s !== room.status) onChangeStatus(s);
-              }}
-            >
-              <span className={`pill ${STATUS_PILL[s]}`} style={{ marginRight: 8 }}>
-                {STATUS_LABEL[s]}
-              </span>
-            </button>
-          ))}
-        </div>
-      ) : null}
     </div>
   );
 }
