@@ -146,6 +146,14 @@ input[type="checkbox"] { accent-color: var(--color-accent); width: 15px; height:
 .grid  { display: grid; gap: var(--space-3); }
 .spacer { flex: 1; }
 
+.room-tile {
+  transition: transform 80ms ease, box-shadow 80ms ease;
+}
+.room-tile:hover {
+  box-shadow: var(--shadow-md);
+  transform: translateY(-1px);
+}
+
 .table { width: 100%; border-collapse: collapse; }
 .table th, .table td { padding: 10px 12px; text-align: left; border-bottom: 1px solid var(--color-border); }
 .table th { font-weight: 600; color: var(--color-text-soft); font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em; }

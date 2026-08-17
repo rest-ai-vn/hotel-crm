@@ -182,6 +182,7 @@ export function Rooms() {
                   return (
                     <button
                       key={room.id}
+                      className="room-tile"
                       onClick={() => setPicker(room)}
                       title={`${room.number} · ${room.room_types?.name ?? ""} · ${STATUS_LABEL[room.status]}`}
                       style={{
@@ -192,15 +193,6 @@ export function Rooms() {
                         padding: "8px 6px",
                         textAlign: "center",
                         cursor: "pointer",
-                        transition: "transform 80ms ease, box-shadow 80ms ease",
-                      }}
-                      onMouseEnter={(e) => {
-                        e.currentTarget.style.boxShadow = "var(--shadow-md)";
-                        e.currentTarget.style.transform = "translateY(-1px)";
-                      }}
-                      onMouseLeave={(e) => {
-                        e.currentTarget.style.boxShadow = "none";
-                        e.currentTarget.style.transform = "none";
                       }}
                     >
                       <div style={{ fontSize: 16, fontWeight: 700, lineHeight: 1.2 }}>
