@@ -1,17 +1,11 @@
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiFetchEnvelope, apiFetch } from "../lib/api";
-import { formatDate, todayIso } from "../lib/format";
+import { addDaysIso, formatDate, todayIso } from "../lib/format";
 import type { Reservation, Room } from "../lib/types";
 
 const DAYS = 14;
 const VN_DAY = ["CN", "T2", "T3", "T4", "T5", "T6", "T7"];
-
-function addDaysIso(iso: string, n: number): string {
-  const [y, m, d] = iso.split("-").map(Number);
-  const date = new Date(Date.UTC(y!, m! - 1, d! + n));
-  return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, "0")}-${String(date.getUTCDate()).padStart(2, "0")}`;
-}
 
 function buildDays(start: string, count: number): string[] {
   return Array.from({ length: count }, (_, i) => addDaysIso(start, i));

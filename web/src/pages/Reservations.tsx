@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiFetchEnvelope, apiFetch } from "../lib/api";
-import { formatDate, formatDateTime, formatVnd, todayIso } from "../lib/format";
+import { addDaysIso, formatDate, formatDateTime, formatVnd, todayIso } from "../lib/format";
 import { printReservationReceipt } from "../lib/print";
 import type {
   BookingType,
@@ -97,9 +97,7 @@ const STATUS_FILTER_OPTIONS: ReservationStatus[] = [
 ];
 
 function isoNDaysFromNow(offset: number): string {
-  const t = new Date();
-  t.setDate(t.getDate() + offset);
-  return `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, "0")}-${String(t.getDate()).padStart(2, "0")}`;
+  return addDaysIso(todayIso(), offset);
 }
 
 export function Reservations() {
