@@ -54,11 +54,11 @@ export function Services() {
         <div className="row" style={{ gap: "var(--space-3)", flexWrap: "wrap", alignItems: "flex-end" }}>
           <label className="stack" style={{ gap: 4, flex: "2 1 180px" }}>
             <span className="muted" style={{ fontSize: 12 }}>Tên dịch vụ</span>
-            <input value={name} onChange={(e) => setName(e.target.value)} placeholder="VD: Ăn sáng" required />
+            <input className="input" value={name} onChange={(e) => setName(e.target.value)} placeholder="VD: Ăn sáng" required />
           </label>
           <label className="stack" style={{ gap: 4, flex: "1 1 120px" }}>
             <span className="muted" style={{ fontSize: 12 }}>Nhóm</span>
-            <select value={category} onChange={(e) => setCategory(e.target.value)}>
+            <select className="input" value={category} onChange={(e) => setCategory(e.target.value)}>
               {CATEGORIES.map((c) => (
                 <option key={c} value={c}>{c}</option>
               ))}
@@ -66,11 +66,11 @@ export function Services() {
           </label>
           <label className="stack" style={{ gap: 4, flex: "1 1 120px" }}>
             <span className="muted" style={{ fontSize: 12 }}>Giá (₫)</span>
-            <input type="number" min={0} value={price} onChange={(e) => setPrice(e.target.value)} placeholder="50000" required />
+            <input className="input" type="number" min={0} value={price} onChange={(e) => setPrice(e.target.value)} placeholder="50000" required />
           </label>
           <label className="stack" style={{ gap: 4, flex: "1 1 90px" }}>
             <span className="muted" style={{ fontSize: 12 }}>Đơn vị</span>
-            <input value={unit} onChange={(e) => setUnit(e.target.value)} placeholder="lần" />
+            <input className="input" value={unit} onChange={(e) => setUnit(e.target.value)} placeholder="lần" />
           </label>
           <button className="btn btn-primary" type="submit" disabled={createService.isPending}>
             {createService.isPending ? "Đang lưu…" : "Thêm"}

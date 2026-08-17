@@ -188,6 +188,19 @@ auth.post("/change-password", requireAuth, async (c) => {
   return c.json({ success: true, data: { id: user.sub } });
 });
 
+// Lightweight staff list (id + name) for assignment dropdowns — any role.
+auth.get("/staff-lite", requireAuth, async (c) => {
+  const db = getServerDb();
+  const { data, error } = await db
+    .from("staff")
+    .select("id, name, role")
+    .eq("property_id", c.get("user").property_id)
+    .eq("is_active", true)
+    .order("name");
+  if (error) return c.json({ success: false, error: error.message }, 500);
+  return c.json({ success: true, data });
+});
+
 // Staff administration (admin only).
 auth.get("/staff", requireAuth, requireRole("admin"), async (c) => {
   const db = getServerDb();

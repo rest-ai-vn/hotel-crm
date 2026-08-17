@@ -52,6 +52,7 @@ export interface Room {
   last_cleaned_at?: string | null;
   cleaning_assignee?: string | null;
   room_types?: { name: string; code: string };
+  staff?: { name: string } | null;
 }
 
 export interface Guest {
@@ -232,6 +233,26 @@ export interface Company {
   note: string | null;
   is_active: boolean;
   discount_pct?: number;
+}
+
+export interface StaffLite {
+  id: string;
+  name: string;
+  role: StaffRole;
+}
+
+export type LostFoundStatus = "stored" | "returned";
+
+export interface LostFoundItem {
+  id: string;
+  item: string;
+  location: string | null;
+  found_on: string;
+  status: LostFoundStatus;
+  note: string | null;
+  created_at: string;
+  returned_at: string | null;
+  staff?: { name: string } | null;
 }
 
 export type WorkOrderStatus = "open" | "in_progress" | "done";

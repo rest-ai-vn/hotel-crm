@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import { getServerDb } from "../db/supabase-client";
 import { parseBody } from "../lib/validate";
 import {
+  roomAssignSchema,
   roomCreateSchema,
   roomStatusSchema,
   roomTypeCreateSchema,
@@ -66,7 +67,7 @@ rooms.get("/", async (c) => {
 
   let query = db
     .from("rooms")
-    .select("*, room_types(name, code)")
+    .select("*, room_types(name, code), staff:cleaning_assignee(name)")
     .eq("property_id", c.get("user").property_id)
     .eq("is_active", true);
   if (floor && /^\d+$/.test(floor)) query = query.eq("floor", Number(floor));
@@ -109,6 +110,25 @@ rooms.patch("/:id/status", async (c) => {
     .eq("id", id)
     .eq("property_id", c.get("user").property_id)
     .select()
+    .single();
+
+  if (error) return c.json({ success: false, error: error.message }, 400);
+  return c.json({ success: true, data });
+});
+
+// Assign (or clear) a housekeeper responsible for cleaning this room.
+rooms.patch("/:id/assign", async (c) => {
+  const parsed = await parseBody(c, roomAssignSchema);
+  if (!parsed.ok) return parsed.response;
+
+  const id = c.req.param("id") ?? "";
+  const db = getServerDb();
+  const { data, error } = await db
+    .from("rooms")
+    .update({ cleaning_assignee: parsed.data.staff_id })
+    .eq("id", id)
+    .eq("property_id", c.get("user").property_id)
+    .select("*, staff:cleaning_assignee(name)")
     .single();
 
   if (error) return c.json({ success: false, error: error.message }, 400);

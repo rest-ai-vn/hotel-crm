@@ -292,6 +292,39 @@ export const workOrderUpdateSchema = z.object({
   release_room: z.boolean().default(false),
 });
 
+// ── Housekeeping extras ──
+export const roomAssignSchema = z.object({
+  staff_id: uuid.nullable(),
+});
+export const lostFoundCreateSchema = z.object({
+  item: nonEmpty,
+  location: z.string().max(200).optional(),
+  found_on: isoDate.optional(),
+  note: z.string().max(1000).optional(),
+});
+export const lostFoundUpdateSchema = z.object({
+  status: z.enum(["stored", "returned"]).optional(),
+  note: z.string().max(1000).optional(),
+});
+
+// ── Public booking engine ──
+export const publicBookSchema = z
+  .object({
+    code: z.string().min(1).max(50),
+    room_type_id: uuid,
+    check_in: isoDate,
+    check_out: isoDate,
+    name: z.string().min(2).max(200),
+    phone: phone,
+    note: z.string().max(500).optional(),
+    // Honeypot: real users never fill this hidden field.
+    website: z.string().max(200).optional(),
+  })
+  .refine((d) => d.check_out > d.check_in, {
+    message: "Ngày trả phòng phải sau ngày nhận",
+    path: ["check_out"],
+  });
+
 // ── POS / Additional services ──
 export const serviceCreateSchema = z.object({
   name: nonEmpty,

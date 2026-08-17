@@ -16,11 +16,13 @@ import { Shifts } from "./pages/Shifts";
 import { NightAudit } from "./pages/NightAudit";
 import { AuditLogs } from "./pages/AuditLogs";
 import { Properties } from "./pages/Properties";
+import { BookingPublic } from "./pages/BookingPublic";
 
 export default function App() {
   return (
     <Routes>
       <Route path="/login" element={<Login />} />
+      <Route path="/book" element={<BookingPublic />} />
       <Route
         element={
           <ProtectedRoute>

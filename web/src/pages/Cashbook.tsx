@@ -68,26 +68,26 @@ export function Cashbook() {
         <div className="row" style={{ gap: "var(--space-3)", flexWrap: "wrap", alignItems: "flex-end" }}>
           <label className="stack" style={{ gap: 4, flex: "1 1 110px" }}>
             <span className="muted" style={{ fontSize: 12 }}>Loại</span>
-            <select value={direction} onChange={(e) => setDirection(e.target.value as CashDirection)}>
+            <select className="input" value={direction} onChange={(e) => setDirection(e.target.value as CashDirection)}>
               <option value="expense">Chi</option>
               <option value="income">Thu</option>
             </select>
           </label>
           <label className="stack" style={{ gap: 4, flex: "1 1 140px" }}>
             <span className="muted" style={{ fontSize: 12 }}>Hạng mục</span>
-            <input value={category} onChange={(e) => setCategory(e.target.value)} placeholder="VD: Điện nước" />
+            <input className="input" value={category} onChange={(e) => setCategory(e.target.value)} placeholder="VD: Điện nước" />
           </label>
           <label className="stack" style={{ gap: 4, flex: "1 1 120px" }}>
             <span className="muted" style={{ fontSize: 12 }}>Số tiền (₫)</span>
-            <input type="number" min={1} value={amount} onChange={(e) => setAmount(e.target.value)} required />
+            <input className="input" type="number" min={1} value={amount} onChange={(e) => setAmount(e.target.value)} required />
           </label>
           <label className="stack" style={{ gap: 4, flex: "1 1 140px" }}>
             <span className="muted" style={{ fontSize: 12 }}>Ngày</span>
-            <input type="date" value={occurredOn} max={todayIso()} onChange={(e) => setOccurredOn(e.target.value)} />
+            <input className="input" type="date" value={occurredOn} max={todayIso()} onChange={(e) => setOccurredOn(e.target.value)} />
           </label>
           <label className="stack" style={{ gap: 4, flex: "2 1 160px" }}>
             <span className="muted" style={{ fontSize: 12 }}>Ghi chú</span>
-            <input value={note} onChange={(e) => setNote(e.target.value)} />
+            <input className="input" value={note} onChange={(e) => setNote(e.target.value)} />
           </label>
           <button className="btn btn-primary" type="submit" disabled={createTx.isPending}>
             {createTx.isPending ? "Đang lưu…" : "Ghi nhận"}

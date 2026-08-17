@@ -2,7 +2,15 @@ import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiFetch } from "../lib/api";
 import { formatDateTime } from "../lib/format";
-import type { Room, RoomStatus, WorkOrder, WorkOrderStatus } from "../lib/types";
+import { formatDate } from "../lib/format";
+import type {
+  LostFoundItem,
+  Room,
+  RoomStatus,
+  StaffLite,
+  WorkOrder,
+  WorkOrderStatus,
+} from "../lib/types";
 
 const PRIORITY_STATUSES: RoomStatus[] = ["cleaning", "maintenance", "out_of_order"];
 
@@ -31,6 +39,17 @@ export function Housekeeping() {
     queryKey: ["rooms", "all"],
     queryFn: () => apiFetch<Room[]>("/api/rooms"),
     refetchInterval: 30_000,
+  });
+
+  const staffQuery = useQuery({
+    queryKey: ["staff-lite"],
+    queryFn: () => apiFetch<StaffLite[]>("/api/auth/staff-lite"),
+  });
+
+  const assign = useMutation({
+    mutationFn: ({ roomId, staffId }: { roomId: string; staffId: string | null }) =>
+      apiFetch(`/api/rooms/${roomId}/assign`, { method: "PATCH", body: { staff_id: staffId } }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["rooms"] }),
   });
 
   const updateStatus = useMutation({
@@ -68,6 +87,8 @@ export function Housekeeping() {
             empty="Không có phòng nào cần xử lý"
             rooms={needsAttention}
             onMark={(id, status) => updateStatus.mutate({ id, status })}
+            staff={staffQuery.data ?? []}
+            onAssign={(roomId, staffId) => assign.mutate({ roomId, staffId })}
             primary
           />
           <Section
@@ -77,9 +98,148 @@ export function Housekeeping() {
             onMark={(id, status) => updateStatus.mutate({ id, status })}
           />
           <WorkOrdersSection rooms={rooms} />
+          <LostFoundSection />
         </>
       )}
     </div>
+  );
+}
+
+function LostFoundSection() {
+  const qc = useQueryClient();
+  const [item, setItem] = useState("");
+  const [location, setLocation] = useState("");
+  const [showReturned, setShowReturned] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const list = useQuery({
+    queryKey: ["lost-found"],
+    queryFn: () => apiFetch<LostFoundItem[]>("/api/lost-found"),
+  });
+
+  const create = useMutation({
+    mutationFn: () =>
+      apiFetch<LostFoundItem>("/api/lost-found", {
+        method: "POST",
+        body: { item, location: location || undefined },
+      }),
+    onSuccess: () => {
+      setItem("");
+      setLocation("");
+      setError(null);
+      qc.invalidateQueries({ queryKey: ["lost-found"] });
+    },
+    onError: (e) => setError(e instanceof Error ? e.message : "Lỗi"),
+  });
+
+  const markReturned = useMutation({
+    mutationFn: (id: string) =>
+      apiFetch(`/api/lost-found/${id}`, { method: "PUT", body: { status: "returned" } }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["lost-found"] }),
+  });
+
+  const rows = (list.data ?? []).filter((x) => showReturned || x.status === "stored");
+
+  return (
+    <section>
+      <h2
+        style={{
+          fontSize: 14,
+          textTransform: "uppercase",
+          letterSpacing: "0.06em",
+          color: "var(--color-text-soft)",
+          margin: "0 0 var(--space-2)",
+        }}
+      >
+        Đồ thất lạc (Lost &amp; Found)
+      </h2>
+      <div className="card" style={{ padding: "var(--space-4)" }}>
+        <form
+          className="row"
+          style={{ gap: 8, flexWrap: "wrap" }}
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (item && !create.isPending) create.mutate();
+          }}
+        >
+          <input
+            className="input"
+            style={{ flex: "1 1 200px" }}
+            placeholder="Món đồ (VD: Sạc iPhone màu trắng)"
+            value={item}
+            onChange={(e) => setItem(e.target.value)}
+          />
+          <input
+            className="input"
+            style={{ width: 180 }}
+            placeholder="Nơi nhặt (VD: Phòng 101)"
+            value={location}
+            onChange={(e) => setLocation(e.target.value)}
+          />
+          <button className="btn btn-primary" type="submit" disabled={!item || create.isPending}>
+            + Ghi nhận
+          </button>
+          <div className="spacer" />
+          <label className="row" style={{ gap: 4, fontSize: 12, alignItems: "center" }}>
+            <input
+              type="checkbox"
+              checked={showReturned}
+              onChange={(e) => setShowReturned(e.target.checked)}
+            />
+            Hiện đồ đã trả
+          </label>
+        </form>
+        {error ? <div style={{ color: "var(--color-danger)", fontSize: 13, marginTop: 8 }}>{error}</div> : null}
+
+        {rows.length === 0 ? (
+          <div className="muted" style={{ fontSize: 13, marginTop: "var(--space-2)" }}>
+            Không có đồ thất lạc đang lưu.
+          </div>
+        ) : (
+          <table className="table" style={{ marginTop: "var(--space-2)" }}>
+            <thead>
+              <tr>
+                <th>Món đồ</th>
+                <th>Nơi nhặt</th>
+                <th>Ngày nhặt</th>
+                <th>Người ghi nhận</th>
+                <th>Trạng thái</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((x) => (
+                <tr key={x.id}>
+                  <td style={{ fontWeight: 500 }}>{x.item}</td>
+                  <td>{x.location ?? "—"}</td>
+                  <td style={{ fontSize: 12 }}>{formatDate(x.found_on)}</td>
+                  <td>{x.staff?.name ?? "—"}</td>
+                  <td>
+                    {x.status === "stored" ? (
+                      <span className="pill warning">Đang lưu</span>
+                    ) : (
+                      <span className="pill success">Đã trả khách</span>
+                    )}
+                  </td>
+                  <td style={{ width: 1 }}>
+                    {x.status === "stored" ? (
+                      <button
+                        className="btn btn-ghost"
+                        style={{ fontSize: 12, padding: "2px 8px" }}
+                        onClick={() => markReturned.mutate(x.id)}
+                        disabled={markReturned.isPending}
+                      >
+                        ✓ Đã trả khách
+                      </button>
+                    ) : null}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+    </section>
   );
 }
 
@@ -255,12 +415,16 @@ function Section({
   rooms,
   empty,
   onMark,
+  staff,
+  onAssign,
   primary,
 }: {
   title: string;
   rooms: Room[];
   empty: string;
   onMark: (id: string, status: RoomStatus) => void;
+  staff?: StaffLite[];
+  onAssign?: (roomId: string, staffId: string | null) => void;
   primary?: boolean;
 }) {
   return (
@@ -302,6 +466,26 @@ function Section({
               {room.last_cleaned_at ? (
                 <div className="muted" style={{ fontSize: 11, marginTop: 2 }}>
                   Đã dọn: {formatDateTime(room.last_cleaned_at)}
+                </div>
+              ) : null}
+              {onAssign && staff && room.status === "cleaning" ? (
+                <select
+                  className="input"
+                  style={{ marginTop: 6, height: 30, fontSize: 12 }}
+                  value={room.cleaning_assignee ?? ""}
+                  onChange={(e) => onAssign(room.id, e.target.value || null)}
+                  title="Giao phòng này cho nhân viên dọn"
+                >
+                  <option value="">— Giao cho… —</option>
+                  {staff.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.name}
+                    </option>
+                  ))}
+                </select>
+              ) : room.staff?.name && room.status === "cleaning" ? (
+                <div className="muted" style={{ fontSize: 11, marginTop: 2 }}>
+                  🧹 {room.staff.name}
                 </div>
               ) : null}
               <div
