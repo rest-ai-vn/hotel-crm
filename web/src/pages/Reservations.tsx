@@ -318,6 +318,8 @@ function ReservationDrawer({
               quantity: q,
             },
           });
+          // Đã ghi món này — xóa khỏi state để nếu check-out lỗi, bấm lại không ghi trùng.
+          setMinibarQty((prev) => ({ ...prev, [s.id]: "" }));
         }
       }
       return apiFetch(`/api/reservations/${reservation.id}/check-out`, { method: "POST" });
