@@ -305,6 +305,46 @@ reports.get("/chain", async (c) => {
   });
 });
 
+// ── Daily revenue series (cho biểu đồ) ──
+reports.get("/daily", async (c) => {
+  const from = c.req.query("from") || firstOfMonthIso();
+  const to = c.req.query("to") || todayIso();
+  const db = await getTenantDb(c.get("user").property_id);
+
+  const { data, error } = await db
+    .from("reservations")
+    .select("check_in, total_amount, services_total")
+    .eq("property_id", c.get("user").property_id)
+    .gte("check_in", from)
+    .lte("check_in", to)
+    .in("status", REVENUE_STATUSES as unknown as string[]);
+  if (error) return c.json({ success: false, error: error.message }, 500);
+
+  const byDay = new Map<string, { revenue: number; count: number }>();
+  for (const r of (data ?? []) as Array<{
+    check_in: string;
+    total_amount: number;
+    services_total: number;
+  }>) {
+    const cur = byDay.get(r.check_in) ?? { revenue: 0, count: 0 };
+    byDay.set(r.check_in, {
+      revenue: cur.revenue + (r.total_amount ?? 0) + (r.services_total ?? 0),
+      count: cur.count + 1,
+    });
+  }
+
+  // Trả đủ chuỗi ngày (kể cả ngày 0đ) để biểu đồ liền mạch, tối đa 92 ngày.
+  const days: Array<{ date: string; revenue: number; count: number }> = [];
+  const start = new Date(`${from}T00:00:00Z`).getTime();
+  const end = new Date(`${to}T00:00:00Z`).getTime();
+  for (let ts = start, i = 0; ts <= end && i < 92; ts += 86_400_000, i++) {
+    const d = new Date(ts).toISOString().slice(0, 10);
+    const hit = byDay.get(d);
+    days.push({ date: d, revenue: hit?.revenue ?? 0, count: hit?.count ?? 0 });
+  }
+  return c.json({ success: true, data: { from, to, days } });
+});
+
 // ── Residence declaration (khai báo lưu trú) ──
 reports.get("/residence", async (c) => {
   const date = c.req.query("date") || todayIso();

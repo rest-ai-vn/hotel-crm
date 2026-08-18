@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { apiFetch } from "../lib/api";
 import { formatDate, formatVnd, todayIso } from "../lib/format";
-import { downloadCsv } from "../lib/csv";
+import { downloadCsv, downloadExcel } from "../lib/csv";
 import { useAuth } from "../lib/auth-context";
 import type {
   BreakdownReport,
@@ -44,6 +44,15 @@ export function Reports() {
     queryKey: ["reports-revenue", from, to],
     queryFn: () => apiFetch<RevenueReport>("/api/reports/revenue", { query: { from, to } }),
   });
+  const dailyQuery = useQuery({
+    queryKey: ["reports-daily", from, to],
+    queryFn: () =>
+      apiFetch<{ days: Array<{ date: string; revenue: number; count: number }> }>(
+        "/api/reports/daily",
+        { query: { from, to } },
+      ),
+  });
+
   const breakdownQuery = useQuery({
     queryKey: ["reports-breakdown", tab, from, to],
     queryFn: () =>
@@ -55,8 +64,8 @@ export function Reports() {
 
   function exportBreakdown() {
     if (!b) return;
-    downloadCsv(
-      `bao-cao-${b.by}-${from}-${to}.csv`,
+    downloadExcel(
+      `bao-cao-${b.by}-${from}-${to}`,
       ["Nhóm", "Số lượng", "Doanh thu (VND)"],
       b.rows.map((row) => [
         b.by === "source" ? (SOURCE_LABEL[row.label] ?? row.label) : row.label,
@@ -113,6 +122,8 @@ export function Reports() {
         </>
       ) : null}
 
+      <RevenueChart days={dailyQuery.data?.days ?? []} />
+
       <section className="card" style={{ padding: "var(--space-4)" }}>
         <div className="row" style={{ justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
           <div className="row" style={{ gap: 6 }}>
@@ -128,7 +139,7 @@ export function Reports() {
             ))}
           </div>
           <button className="btn btn-ghost" onClick={exportBreakdown} disabled={!b || b.rows.length === 0}>
-            ⬇ Xuất CSV
+            ⬇ Xuất Excel
           </button>
         </div>
 
@@ -305,6 +316,64 @@ function ChainSection({ from, to }: { from: string; to: string }) {
           </tbody>
         </table>
       )}
+    </section>
+  );
+}
+
+function RevenueChart({ days }: { days: Array<{ date: string; revenue: number; count: number }> }) {
+  if (days.length === 0) return null;
+  const W = 900;
+  const H = 180;
+  const pad = 8;
+  const max = Math.max(1, ...days.map((d) => d.revenue));
+  const bw = Math.max(4, Math.floor((W - pad * 2) / days.length) - 3);
+
+  return (
+    <section className="card" style={{ padding: "var(--space-4)" }}>
+      <div className="row" style={{ justifyContent: "space-between", marginBottom: 6 }}>
+        <h2 style={{ margin: 0, fontSize: 16 }}>Doanh thu theo ngày</h2>
+        <span className="muted" style={{ fontSize: 12 }}>
+          Đỉnh: {formatVnd(max)}
+        </span>
+      </div>
+      <svg
+        viewBox={`0 0 ${W} ${H + 24}`}
+        style={{ width: "100%", height: "auto", display: "block" }}
+        role="img"
+        aria-label="Biểu đồ doanh thu theo ngày"
+      >
+        {days.map((d, i) => {
+          const h = Math.round((d.revenue / max) * H);
+          const x = pad + i * ((W - pad * 2) / days.length);
+          const isToday = d.date === todayIso();
+          return (
+            <g key={d.date}>
+              <rect
+                x={x}
+                y={H - h}
+                width={bw}
+                height={Math.max(h, d.revenue > 0 ? 2 : 0)}
+                rx={2}
+                fill={isToday ? "var(--color-accent)" : "oklch(75% 0.09 260)"}
+                opacity={d.revenue > 0 ? 1 : 0.15}
+              >
+                <title>{`${formatDate(d.date)}: ${formatVnd(d.revenue)} (${d.count} đặt phòng)`}</title>
+              </rect>
+              {days.length <= 31 && (i % Math.ceil(days.length / 10) === 0 || isToday) ? (
+                <text
+                  x={x + bw / 2}
+                  y={H + 16}
+                  textAnchor="middle"
+                  fontSize={10}
+                  fill="var(--color-text-soft)"
+                >
+                  {d.date.slice(8)}/{d.date.slice(5, 7)}
+                </text>
+              ) : null}
+            </g>
+          );
+        })}
+      </svg>
     </section>
   );
 }

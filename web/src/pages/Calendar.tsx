@@ -36,7 +36,7 @@ export function Calendar() {
   const qc = useQueryClient();
   const [start, setStart] = useState(todayIso());
   const [dragging, setDragging] = useState<Reservation | null>(null);
-  const [overRoom, setOverRoom] = useState<string | null>(null);
+  const [overCell, setOverCell] = useState<{ room: string; day: string } | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const days = useMemo(() => buildDays(start, DAYS), [start]);
@@ -75,6 +75,17 @@ export function Calendar() {
     [list],
   );
 
+  const update = useMutation({
+    mutationFn: ({ id, body }: { id: string; body: Record<string, unknown> }) =>
+      apiFetch(`/api/reservations/${id}`, { method: "PUT", body }),
+    onSuccess: () => {
+      setError(null);
+      qc.invalidateQueries({ queryKey: ["reservations"] });
+      qc.invalidateQueries({ queryKey: ["rooms"] });
+    },
+    onError: (e) => setError(e instanceof Error ? e.message : "Không dời được lịch"),
+  });
+
   const assign = useMutation({
     mutationFn: ({ reservation, roomId }: { reservation: Reservation; roomId: string }) =>
       reservation.status === "checked_in"
@@ -94,24 +105,61 @@ export function Calendar() {
     onError: (e) => setError(e instanceof Error ? e.message : "Không gán được phòng"),
   });
 
-  function handleDrop(room: Room) {
-    setOverRoom(null);
+  function handleDrop(room: Room, day: string) {
+    setOverCell(null);
     const r = dragging;
     setDragging(null);
-    if (!r || r.room_id === room.id) return;
+    if (!r) return;
 
-    const clash = (byRoom.get(room.id) ?? []).some((x) => x.id !== r.id && overlaps(x, r));
+    // checked_in: chỉ đổi phòng; confirmed: đổi cả phòng lẫn ngày (giữ số đêm)
+    const canShiftDates = r.status === "confirmed";
+    const nights = Math.max(
+      0,
+      Math.round((Date.parse(r.check_out) - Date.parse(r.check_in)) / 86_400_000),
+    );
+    const newCheckIn = canShiftDates ? day : r.check_in;
+    const newCheckOut = canShiftDates
+      ? nights === 0
+        ? day
+        : addDaysIso(day, nights)
+      : r.check_out;
+
+    const roomChanged = r.room_id !== room.id;
+    const datesChanged = newCheckIn !== r.check_in;
+    if (!roomChanged && !datesChanged) return;
+
+    const shifted = { ...r, check_in: newCheckIn, check_out: newCheckOut };
+    const clash = (byRoom.get(room.id) ?? []).some((x) => x.id !== r.id && overlaps(x, shifted));
     if (clash) {
-      setError(`Phòng ${room.number} đã có khách trùng ngày ${formatDate(r.check_in)}`);
+      setError(`Phòng ${room.number} đã có khách trùng ngày ${formatDate(newCheckIn)}`);
       return;
     }
-    if (r.room_type_id !== room.room_type_id) {
+    if (roomChanged && r.room_type_id !== room.room_type_id) {
       const ok = window.confirm(
         `Phòng ${room.number} khác loại với đặt phòng (${r.room_types?.code ?? ""}). Vẫn gán?`,
       );
       if (!ok) return;
     }
-    assign.mutate({ reservation: r, roomId: room.id });
+    if (datesChanged) {
+      const ok = window.confirm(
+        `Dời lịch ${r.guests?.name ?? r.confirmation_code}:\n` +
+          `${formatDate(r.check_in)} → ${formatDate(r.check_out)}  thành  ${formatDate(newCheckIn)} → ${formatDate(newCheckOut)}` +
+          (roomChanged ? `\nPhòng mới: ${room.number}` : ""),
+      );
+      if (!ok) return;
+    }
+
+    if (r.status === "checked_in") {
+      assign.mutate({ reservation: r, roomId: room.id });
+    } else {
+      update.mutate({
+        id: r.id,
+        body: {
+          room_id: room.id,
+          ...(datesChanged ? { check_in: newCheckIn, check_out: newCheckOut } : {}),
+        },
+      });
+    }
   }
 
   function barProps(r: Reservation) {
@@ -137,7 +185,7 @@ export function Calendar() {
         <div>
           <h1 style={{ margin: 0, fontSize: 24, letterSpacing: "-0.01em" }}>Sơ đồ đặt phòng</h1>
           <div className="muted">
-            {allRooms.length} phòng · {DAYS} ngày · kéo-thả để gán / đổi phòng
+            {allRooms.length} phòng · {DAYS} ngày · kéo-thả để gán phòng / đổi phòng / dời ngày
           </div>
         </div>
         <div className="row" style={{ gap: 6 }}>
@@ -239,29 +287,10 @@ export function Calendar() {
             {allRooms.map((room) => (
               <div
                 key={room.id}
-                onDragOver={(e) => {
-                  if (dragging) {
-                    e.preventDefault();
-                    setOverRoom(room.id);
-                  }
-                }}
-                onDragLeave={() => setOverRoom((cur) => (cur === room.id ? null : cur))}
-                onDrop={(e) => {
-                  e.preventDefault();
-                  handleDrop(room);
-                }}
                 style={{
                   display: "grid",
                   gridTemplateColumns: `160px repeat(${DAYS}, ${cellW}px)`,
                   borderBottom: "1px solid var(--color-border)",
-                  outline:
-                    dragging && overRoom === room.id
-                      ? "2px dashed var(--color-accent)"
-                      : "none",
-                  outlineOffset: -2,
-                  background:
-                    dragging && overRoom === room.id ? "var(--color-accent-soft)" : "transparent",
-                  transition: "background 100ms ease",
                 }}
               >
                 <div style={{ padding: "8px 12px", fontSize: 13 }}>
@@ -280,12 +309,30 @@ export function Calendar() {
                     <div
                       key={day}
                       {...(r ? barProps(r) : {})}
+                      onDragOver={(e) => {
+                        if (dragging) {
+                          e.preventDefault();
+                          setOverCell({ room: room.id, day });
+                        }
+                      }}
+                      onDrop={(e) => {
+                        e.preventDefault();
+                        handleDrop(room, day);
+                      }}
                       style={{
                         height: 44,
                         borderLeft: "1px solid var(--color-border)",
-                        background: r
-                          ? STATUS_BG[r.status] ?? "var(--color-accent-soft)"
-                          : "transparent",
+                        outline:
+                          dragging && overCell?.room === room.id && overCell?.day === day
+                            ? "2px dashed var(--color-accent)"
+                            : "none",
+                        outlineOffset: -2,
+                        background:
+                          dragging && overCell?.room === room.id && overCell?.day === day
+                            ? "var(--color-accent-soft)"
+                            : r
+                              ? STATUS_BG[r.status] ?? "var(--color-accent-soft)"
+                              : "transparent",
                         padding: "2px 4px",
                         fontSize: 11,
                         overflow: "hidden",

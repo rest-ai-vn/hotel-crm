@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiFetchEnvelope, apiFetch } from "../lib/api";
 import { addDaysIso, formatDate, formatDateTime, formatVnd, todayIso } from "../lib/format";
-import { printReservationReceipt } from "../lib/print";
+import { printGroupReceipt, printReservationReceipt } from "../lib/print";
 import type {
   BookingType,
   Company,
@@ -259,6 +259,15 @@ function ReservationDrawer({
   const [showExtend, setShowExtend] = useState(false);
   const [extendDate, setExtendDate] = useState(reservation.check_out);
   const [extendAmount, setExtendAmount] = useState("");
+  const [showMinibar, setShowMinibar] = useState(false);
+  const [minibarQty, setMinibarQty] = useState<Record<string, string>>({});
+  const [showEdit, setShowEdit] = useState(false);
+  const [editCheckIn, setEditCheckIn] = useState(reservation.check_in);
+  const [editCheckOut, setEditCheckOut] = useState(reservation.check_out);
+  const [editAdults, setEditAdults] = useState(String(reservation.adults));
+  const [editChildren, setEditChildren] = useState(String(reservation.children));
+  const [editTotal, setEditTotal] = useState(String(reservation.total_amount));
+  const [editNotes, setEditNotes] = useState(reservation.notes ?? "");
 
   const isActive = reservation.status === "confirmed" || reservation.status === "checked_in";
   const availableRooms = useQuery({
@@ -266,6 +275,12 @@ function ReservationDrawer({
     queryFn: () => apiFetch<Room[]>("/api/rooms", { query: { status: "available" } }),
     enabled: isActive,
   });
+  const catalogQuery = useQuery({
+    queryKey: ["services-catalog"],
+    queryFn: () => apiFetch<Service[]>("/api/services/catalog"),
+    enabled: reservation.status === "checked_in",
+  });
+  const minibarItems = (catalogQuery.data ?? []).filter((s) => s.category === "minibar");
 
   const checkIn = useMutation({
     mutationFn: () =>
@@ -282,6 +297,50 @@ function ReservationDrawer({
   const checkOut = useMutation({
     mutationFn: () =>
       apiFetch(`/api/reservations/${reservation.id}/check-out`, { method: "POST" }),
+    onSuccess: () => {
+      onMutated();
+      onClose();
+    },
+    onError: (e) => setError(e instanceof Error ? e.message : "Lỗi"),
+  });
+  const checkOutWithMinibar = useMutation({
+    mutationFn: async () => {
+      for (const s of minibarItems) {
+        const q = Math.max(0, Number(minibarQty[s.id] ?? "0") || 0);
+        if (q > 0) {
+          await apiFetch("/api/services", {
+            method: "POST",
+            body: {
+              reservation_id: reservation.id,
+              service_id: s.id,
+              name: s.name,
+              unit_price: s.price,
+              quantity: q,
+            },
+          });
+        }
+      }
+      return apiFetch(`/api/reservations/${reservation.id}/check-out`, { method: "POST" });
+    },
+    onSuccess: () => {
+      onMutated();
+      onClose();
+    },
+    onError: (e) => setError(e instanceof Error ? e.message : "Lỗi"),
+  });
+  const update = useMutation({
+    mutationFn: () =>
+      apiFetch(`/api/reservations/${reservation.id}`, {
+        method: "PUT",
+        body: {
+          check_in: editCheckIn,
+          check_out: editCheckOut,
+          adults: Math.max(1, Number(editAdults) || 1),
+          children: Math.max(0, Number(editChildren) || 0),
+          total_amount: Math.max(0, Number(editTotal) || 0),
+          notes: editNotes,
+        },
+      }),
     onSuccess: () => {
       onMutated();
       onClose();
@@ -355,6 +414,8 @@ function ReservationDrawer({
   const busy =
     checkIn.isPending ||
     checkOut.isPending ||
+    checkOutWithMinibar.isPending ||
+    update.isPending ||
     cancel.isPending ||
     noShow.isPending ||
     moveRoom.isPending ||
@@ -493,7 +554,11 @@ function ReservationDrawer({
             </>
           ) : null}
           {reservation.status === "checked_in" ? (
-            <button className="btn btn-primary" disabled={busy} onClick={() => checkOut.mutate()}>
+            <button
+              className="btn btn-primary"
+              disabled={busy}
+              onClick={() => (minibarItems.length > 0 ? setShowMinibar((v) => !v) : checkOut.mutate())}
+            >
               Trả phòng
             </button>
           ) : null}
@@ -504,6 +569,9 @@ function ReservationDrawer({
               </button>
               <button className="btn btn-ghost" disabled={busy} onClick={() => setShowExtend((v) => !v)}>
                 Gia hạn
+              </button>
+              <button className="btn btn-ghost" disabled={busy} onClick={() => setShowEdit((v) => !v)}>
+                ✎ Sửa
               </button>
             </>
           ) : null}
@@ -566,6 +634,120 @@ function ReservationDrawer({
                 onClick={() => extend.mutate()}
               >
                 Xác nhận gia hạn
+              </button>
+            </div>
+          </div>
+        ) : null}
+
+        {showMinibar && reservation.status === "checked_in" ? (
+          <div className="card" style={{ marginTop: "var(--space-3)", padding: "var(--space-3)" }}>
+            <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 8 }}>
+              🧊 Kiểm minibar trước khi trả phòng
+            </div>
+            <div className="stack" style={{ gap: 6 }}>
+              {minibarItems.map((s) => (
+                <div key={s.id} className="row" style={{ justifyContent: "space-between", gap: 8 }}>
+                  <span style={{ fontSize: 13 }}>
+                    {s.name}{" "}
+                    <span className="muted">
+                      · {formatVnd(s.price)}/{s.unit}
+                    </span>
+                  </span>
+                  <input
+                    className="input"
+                    style={{ width: 64, textAlign: "right" }}
+                    inputMode="numeric"
+                    placeholder="0"
+                    value={minibarQty[s.id] ?? ""}
+                    onChange={(e) =>
+                      setMinibarQty((q) => ({
+                        ...q,
+                        [s.id]: e.target.value.replace(/[^0-9]/g, ""),
+                      }))
+                    }
+                  />
+                </div>
+              ))}
+            </div>
+            <div className="row" style={{ marginTop: 10, flexWrap: "wrap" }}>
+              <button
+                className="btn btn-primary"
+                disabled={busy}
+                onClick={() => checkOutWithMinibar.mutate()}
+              >
+                Ghi minibar & trả phòng
+              </button>
+              <button className="btn btn-ghost" disabled={busy} onClick={() => checkOut.mutate()}>
+                Không dùng gì — trả phòng luôn
+              </button>
+            </div>
+          </div>
+        ) : null}
+
+        {showEdit && isActive ? (
+          <div className="card" style={{ marginTop: "var(--space-3)", padding: "var(--space-3)" }}>
+            <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 8 }}>✎ Sửa đặt phòng</div>
+            <div className="row" style={{ gap: 6, flexWrap: "wrap" }}>
+              <FormField label="Nhận phòng" style={{ flex: "1 1 140px" }}>
+                <input
+                  type="date"
+                  className="input"
+                  value={editCheckIn}
+                  max={editCheckOut}
+                  onChange={(e) => setEditCheckIn(e.target.value)}
+                />
+              </FormField>
+              <FormField label="Trả phòng" style={{ flex: "1 1 140px" }}>
+                <input
+                  type="date"
+                  className="input"
+                  value={editCheckOut}
+                  min={editCheckIn}
+                  onChange={(e) => setEditCheckOut(e.target.value)}
+                />
+              </FormField>
+            </div>
+            <div className="row" style={{ gap: 6, flexWrap: "wrap", marginTop: 6 }}>
+              <FormField label="Người lớn" style={{ flex: "1 1 90px" }}>
+                <input
+                  className="input"
+                  inputMode="numeric"
+                  value={editAdults}
+                  onChange={(e) => setEditAdults(e.target.value.replace(/[^0-9]/g, ""))}
+                />
+              </FormField>
+              <FormField label="Trẻ em" style={{ flex: "1 1 90px" }}>
+                <input
+                  className="input"
+                  inputMode="numeric"
+                  value={editChildren}
+                  onChange={(e) => setEditChildren(e.target.value.replace(/[^0-9]/g, ""))}
+                />
+              </FormField>
+              <FormField label="Tổng tiền (VND)" style={{ flex: "1 1 140px" }}>
+                <input
+                  className="input"
+                  inputMode="numeric"
+                  value={editTotal}
+                  onChange={(e) => setEditTotal(e.target.value.replace(/[^0-9]/g, ""))}
+                />
+              </FormField>
+            </div>
+            <FormField label="Ghi chú" style={{ marginTop: 6 }}>
+              <textarea
+                className="input"
+                rows={2}
+                value={editNotes}
+                onChange={(e) => setEditNotes(e.target.value)}
+              />
+            </FormField>
+            <div className="row" style={{ marginTop: 10 }}>
+              <button
+                className="btn btn-primary"
+                disabled={busy || !editCheckIn || !editCheckOut || editCheckOut < editCheckIn}
+                onClick={() => update.mutate()}
+              >
+                Lưu thay đổi
               </button>
             </div>
           </div>
@@ -1482,8 +1664,30 @@ function GroupSection({ groupCode, currentId }: { groupCode: string; currentId: 
         >
           👥 Đoàn {groupCode} ({rows.length} phòng)
         </h3>
-        <div style={{ fontSize: 12 }}>
-          <span className="muted">Tổng đoàn</span> <strong>{formatVnd(groupTotal)}</strong>
+        <div className="row" style={{ gap: 8, alignItems: "center" }}>
+          <div style={{ fontSize: 12 }}>
+            <span className="muted">Tổng đoàn</span> <strong>{formatVnd(groupTotal)}</strong>
+          </div>
+          <button
+            className="btn btn-ghost"
+            style={{ fontSize: 12, padding: "4px 10px" }}
+            disabled={rows.length === 0}
+            onClick={() =>
+              printGroupReceipt(
+                groupCode,
+                rows.map((r) => ({
+                  confirmation_code: r.confirmation_code,
+                  room_type: r.room_types?.name ?? r.room_types?.code ?? "",
+                  room_number: r.rooms?.number ?? "Chưa gán",
+                  total_amount: r.total_amount,
+                  services_total: r.services_total ?? 0,
+                  payment_status: PAYMENT_STATUS_LABEL[r.payment_status],
+                })),
+              )
+            }
+          >
+            🖨 In phiếu đoàn
+          </button>
         </div>
       </div>
       <div className="card" style={{ overflow: "hidden" }}>
