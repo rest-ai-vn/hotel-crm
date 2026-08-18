@@ -1,9 +1,10 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "../lib/auth-context";
 import { apiFetch, setToken } from "../lib/api";
 import type { Property } from "../lib/types";
+import { getAdminLang, initAdminTranslation, setAdminLang } from "../lib/translate";
 
 type NavItem = {
   to: string;
@@ -33,6 +34,10 @@ export function AppShell() {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
   const [showPassword, setShowPassword] = useState(false);
+
+  useEffect(() => {
+    initAdminTranslation();
+  }, []);
 
   function handleLogout() {
     logout();
@@ -93,6 +98,14 @@ export function AppShell() {
               {user?.email} · {user?.role}
             </div>
           </div>
+          <button
+            className="btn btn-ghost"
+            onClick={() => setAdminLang(getAdminLang() === "en" ? "vi" : "en")}
+            style={{ width: "100%", justifyContent: "flex-start" }}
+            title="Switch language / Đổi ngôn ngữ"
+          >
+            🌐 {getAdminLang() === "en" ? "Tiếng Việt" : "English"}
+          </button>
           <button
             className="btn btn-ghost"
             onClick={() => setShowPassword(true)}

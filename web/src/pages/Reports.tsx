@@ -124,6 +124,8 @@ export function Reports() {
 
       <RevenueChart days={dailyQuery.data?.days ?? []} />
 
+      <ForecastSection />
+
       <section className="card" style={{ padding: "var(--space-4)" }}>
         <div className="row" style={{ justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
           <div className="row" style={{ gap: 6 }}>
@@ -320,31 +322,47 @@ function ChainSection({ from, to }: { from: string; to: string }) {
   );
 }
 
-function RevenueChart({ days }: { days: Array<{ date: string; revenue: number; count: number }> }) {
-  if (days.length === 0) return null;
+interface BarDatum {
+  date: string;
+  value: number;
+  tooltip: string;
+}
+
+function BarChart({
+  title,
+  right,
+  data,
+  color,
+}: {
+  title: string;
+  right: string;
+  data: ReadonlyArray<BarDatum>;
+  color: string;
+}) {
+  if (data.length === 0) return null;
   const W = 900;
   const H = 180;
   const pad = 8;
-  const max = Math.max(1, ...days.map((d) => d.revenue));
-  const bw = Math.max(4, Math.floor((W - pad * 2) / days.length) - 3);
+  const max = Math.max(1, ...data.map((d) => d.value));
+  const bw = Math.max(4, Math.floor((W - pad * 2) / data.length) - 3);
 
   return (
     <section className="card" style={{ padding: "var(--space-4)" }}>
       <div className="row" style={{ justifyContent: "space-between", marginBottom: 6 }}>
-        <h2 style={{ margin: 0, fontSize: 16 }}>Doanh thu theo ngày</h2>
+        <h2 style={{ margin: 0, fontSize: 16 }}>{title}</h2>
         <span className="muted" style={{ fontSize: 12 }}>
-          Đỉnh: {formatVnd(max)}
+          {right}
         </span>
       </div>
       <svg
         viewBox={`0 0 ${W} ${H + 24}`}
         style={{ width: "100%", height: "auto", display: "block" }}
         role="img"
-        aria-label="Biểu đồ doanh thu theo ngày"
+        aria-label={title}
       >
-        {days.map((d, i) => {
-          const h = Math.round((d.revenue / max) * H);
-          const x = pad + i * ((W - pad * 2) / days.length);
+        {data.map((d, i) => {
+          const h = Math.round((d.value / max) * H);
+          const x = pad + i * ((W - pad * 2) / data.length);
           const isToday = d.date === todayIso();
           return (
             <g key={d.date}>
@@ -352,14 +370,14 @@ function RevenueChart({ days }: { days: Array<{ date: string; revenue: number; c
                 x={x}
                 y={H - h}
                 width={bw}
-                height={Math.max(h, d.revenue > 0 ? 2 : 0)}
+                height={Math.max(h, d.value > 0 ? 2 : 0)}
                 rx={2}
-                fill={isToday ? "var(--color-accent)" : "oklch(75% 0.09 260)"}
-                opacity={d.revenue > 0 ? 1 : 0.15}
+                fill={isToday ? "var(--color-accent)" : color}
+                opacity={d.value > 0 ? 1 : 0.15}
               >
-                <title>{`${formatDate(d.date)}: ${formatVnd(d.revenue)} (${d.count} đặt phòng)`}</title>
+                <title>{d.tooltip}</title>
               </rect>
-              {days.length <= 31 && (i % Math.ceil(days.length / 10) === 0 || isToday) ? (
+              {data.length <= 31 && (i % Math.ceil(data.length / 10) === 0 || isToday) ? (
                 <text
                   x={x + bw / 2}
                   y={H + 16}
@@ -375,6 +393,56 @@ function RevenueChart({ days }: { days: Array<{ date: string; revenue: number; c
         })}
       </svg>
     </section>
+  );
+}
+
+function RevenueChart({ days }: { days: Array<{ date: string; revenue: number; count: number }> }) {
+  const max = Math.max(1, ...days.map((d) => d.revenue));
+  return (
+    <BarChart
+      title="Doanh thu theo ngày"
+      right={`Đỉnh: ${formatVnd(max)}`}
+      color="oklch(75% 0.09 260)"
+      data={days.map((d) => ({
+        date: d.date,
+        value: d.revenue,
+        tooltip: `${formatDate(d.date)}: ${formatVnd(d.revenue)} (${d.count} đặt phòng)`,
+      }))}
+    />
+  );
+}
+
+interface ForecastDay {
+  date: string;
+  booked: number;
+  occupancy_pct: number;
+  revenue: number;
+}
+
+function ForecastSection() {
+  const forecastQuery = useQuery({
+    queryKey: ["reports-forecast"],
+    queryFn: () =>
+      apiFetch<{
+        total_rooms: number;
+        avg_occupancy_pct: number;
+        series: ForecastDay[];
+      }>("/api/reports/forecast", { query: { days: "30" } }),
+  });
+  const f = forecastQuery.data;
+  if (!f || f.series.length === 0) return null;
+
+  return (
+    <BarChart
+      title="Dự báo công suất 30 ngày tới"
+      right={`TB ${f.avg_occupancy_pct}% · ${f.total_rooms} phòng`}
+      color="oklch(78% 0.11 160)"
+      data={f.series.map((d) => ({
+        date: d.date,
+        value: d.booked,
+        tooltip: `${formatDate(d.date)}: ${d.booked}/${f.total_rooms} phòng (${d.occupancy_pct}%) · dự thu ${formatVnd(d.revenue)}`,
+      }))}
+    />
   );
 }
 

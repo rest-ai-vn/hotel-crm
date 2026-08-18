@@ -52,6 +52,12 @@ const DICT = {
   },
   hotline: { vi: "Hotline", en: "Hotline" },
   booking_error: { vi: "Lỗi đặt phòng", en: "Booking failed" },
+  deposit_title: { vi: "Đặt cọc giữ phòng", en: "Deposit to secure your booking" },
+  deposit_hint: {
+    vi: "Quét mã VietQR bên dưới để chuyển khoản tiền cọc. Phòng được giữ sau khi khách sạn nhận được cọc.",
+    en: "Scan the VietQR code below to transfer the deposit. Your room is held once the hotel receives it.",
+  },
+  transfer_memo: { vi: "Nội dung chuyển khoản", en: "Transfer note" },
 } as const;
 
 export type I18nKey = keyof typeof DICT;

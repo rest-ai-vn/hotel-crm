@@ -15,6 +15,13 @@ const propertyCreateSchema = z.object({
   bank_id: z.string().max(20).nullable().optional(),
   bank_account_no: z.string().max(30).nullable().optional(),
   bank_account_name: z.string().max(100).nullable().optional(),
+  deposit_pct: z.number().int().min(0).max(100).optional(),
+  einvoice_provider: z.enum(["viettel", "vnpt", "misa"]).nullable().optional(),
+  einvoice_tax_code: z.string().max(20).nullable().optional(),
+  einvoice_username: z.string().max(100).nullable().optional(),
+  einvoice_password: z.string().max(200).nullable().optional(),
+  einvoice_template: z.string().max(20).nullable().optional(),
+  einvoice_serial: z.string().max(20).nullable().optional(),
 });
 const propertyUpdateSchema = propertyCreateSchema.partial().extend({
   is_active: z.boolean().optional(),

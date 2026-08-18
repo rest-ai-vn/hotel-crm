@@ -26,11 +26,21 @@ interface PublicOffer {
   available: number;
 }
 
+interface PublicDeposit {
+  pct: number;
+  amount: number;
+  bank_id: string;
+  bank_account_no: string;
+  bank_account_name: string;
+  qr_url: string;
+}
+
 interface PublicBooking {
   confirmation_code: string;
   check_in: string;
   check_out: string;
   total_amount: number;
+  deposit: PublicDeposit | null;
 }
 
 export function BookingPublic() {
@@ -136,6 +146,41 @@ export function BookingPublic() {
             {tr(lang, "quote_code")}
             {hotel.data.phone ? ` ${tr(lang, "hotline")}: ${hotel.data.phone}` : ""}
           </div>
+
+          {done.deposit ? (
+            <div
+              style={{
+                marginTop: 20,
+                paddingTop: 16,
+                borderTop: "1px dashed var(--color-border)",
+                textAlign: "center",
+              }}
+            >
+              <h3 style={{ margin: "0 0 4px", fontSize: 16 }}>
+                {tr(lang, "deposit_title")} ({done.deposit.pct}%):{" "}
+                <span style={{ color: "var(--color-accent)" }}>
+                  {formatVnd(done.deposit.amount)}
+                </span>
+              </h3>
+              <div className="muted" style={{ fontSize: 13, marginBottom: 10 }}>
+                {tr(lang, "deposit_hint")}
+              </div>
+              <img
+                src={done.deposit.qr_url}
+                alt="VietQR"
+                width={280}
+                height={280}
+                style={{ maxWidth: "100%", height: "auto", borderRadius: "var(--radius-md)" }}
+              />
+              <div style={{ fontSize: 13, marginTop: 8 }}>
+                {done.deposit.bank_id} · {done.deposit.bank_account_no}
+                {done.deposit.bank_account_name ? ` · ${done.deposit.bank_account_name}` : ""}
+              </div>
+              <div className="muted" style={{ fontSize: 13 }}>
+                {tr(lang, "transfer_memo")}: <strong>{done.confirmation_code}</strong>
+              </div>
+            </div>
+          ) : null}
         </div>
       </PublicShell>
     );

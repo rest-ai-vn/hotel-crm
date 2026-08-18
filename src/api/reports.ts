@@ -345,6 +345,72 @@ reports.get("/daily", async (c) => {
   return c.json({ success: true, data: { from, to, days } });
 });
 
+// ── Forecast công suất & doanh thu N ngày tới (booking đã có) ──
+reports.get("/forecast", async (c) => {
+  const daysN = Math.min(92, Math.max(7, Number(c.req.query("days")) || 30));
+  const pid = c.get("user").property_id;
+  const db = await getTenantDb(pid);
+
+  const start = todayIso();
+  const startTs = new Date(`${start}T00:00:00Z`).getTime();
+  const end = new Date(startTs + daysN * 86_400_000).toISOString().slice(0, 10);
+
+  const [resvRes, roomsRes] = await Promise.all([
+    db
+      .from("reservations")
+      .select("check_in, check_out, base_amount, surcharge")
+      .eq("property_id", pid)
+      .eq("booking_type", "overnight")
+      .in("status", ["confirmed", "checked_in"])
+      .gt("check_out", start)
+      .lt("check_in", end),
+    db
+      .from("rooms")
+      .select("id", { count: "exact", head: true })
+      .eq("property_id", pid)
+      .eq("is_active", true),
+  ]);
+  if (resvRes.error) return c.json({ success: false, error: resvRes.error.message }, 500);
+
+  const totalRooms = roomsRes.count ?? 0;
+  const byDay = new Map<string, { booked: number; revenue: number }>();
+  for (const r of (resvRes.data ?? []) as Array<{
+    check_in: string;
+    check_out: string;
+    base_amount: number;
+    surcharge: number;
+  }>) {
+    const ci = new Date(`${r.check_in}T00:00:00Z`).getTime();
+    const co = new Date(`${r.check_out}T00:00:00Z`).getTime();
+    const nights = Math.max(1, Math.round((co - ci) / 86_400_000));
+    const perNight = ((r.base_amount ?? 0) + (r.surcharge ?? 0)) / nights;
+    for (let ts = Math.max(ci, startTs); ts < co && ts < startTs + daysN * 86_400_000; ts += 86_400_000) {
+      const d = new Date(ts).toISOString().slice(0, 10);
+      const cur = byDay.get(d) ?? { booked: 0, revenue: 0 };
+      byDay.set(d, { booked: cur.booked + 1, revenue: cur.revenue + perNight });
+    }
+  }
+
+  const days: Array<{ date: string; booked: number; occupancy_pct: number; revenue: number }> = [];
+  for (let i = 0; i < daysN; i++) {
+    const d = new Date(startTs + i * 86_400_000).toISOString().slice(0, 10);
+    const hit = byDay.get(d) ?? { booked: 0, revenue: 0 };
+    days.push({
+      date: d,
+      booked: hit.booked,
+      occupancy_pct: totalRooms > 0 ? Math.round((hit.booked / totalRooms) * 100) : 0,
+      revenue: Math.round(hit.revenue),
+    });
+  }
+  const avgOcc =
+    days.length > 0 ? Math.round(days.reduce((s, x) => s + x.occupancy_pct, 0) / days.length) : 0;
+
+  return c.json({
+    success: true,
+    data: { from: start, days: daysN, total_rooms: totalRooms, avg_occupancy_pct: avgOcc, series: days },
+  });
+});
+
 // ── Residence declaration (khai báo lưu trú) ──
 reports.get("/residence", async (c) => {
   const date = c.req.query("date") || todayIso();

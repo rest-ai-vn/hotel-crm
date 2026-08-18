@@ -289,6 +289,13 @@ function EditPropertyModal({
   const [bankId, setBankId] = useState(property.bank_id ?? "");
   const [bankNo, setBankNo] = useState(property.bank_account_no ?? "");
   const [bankName, setBankName] = useState(property.bank_account_name ?? "");
+  const [depositPct, setDepositPct] = useState(String(property.deposit_pct ?? 30));
+  const [eiProvider, setEiProvider] = useState(property.einvoice_provider ?? "");
+  const [eiTaxCode, setEiTaxCode] = useState(property.einvoice_tax_code ?? "");
+  const [eiUser, setEiUser] = useState(property.einvoice_username ?? "");
+  const [eiPass, setEiPass] = useState(property.einvoice_password ?? "");
+  const [eiTemplate, setEiTemplate] = useState(property.einvoice_template ?? "");
+  const [eiSerial, setEiSerial] = useState(property.einvoice_serial ?? "");
   const [error, setError] = useState<string | null>(null);
 
   const save = useMutation({
@@ -300,6 +307,13 @@ function EditPropertyModal({
           bank_id: bankId || null,
           bank_account_no: bankNo || null,
           bank_account_name: bankName || null,
+          deposit_pct: Math.min(100, Number(depositPct) || 0),
+          einvoice_provider: eiProvider || null,
+          einvoice_tax_code: eiTaxCode || null,
+          einvoice_username: eiUser || null,
+          einvoice_password: eiPass || null,
+          einvoice_template: eiTemplate || null,
+          einvoice_serial: eiSerial || null,
         },
       }),
     onSuccess: onSaved,
@@ -352,6 +366,59 @@ function EditPropertyModal({
             <span className="muted" style={{ fontSize: 12 }}>Tên chủ tài khoản (không dấu)</span>
             <input className="input" value={bankName} onChange={(e) => setBankName(e.target.value.toUpperCase())} />
           </label>
+          <label className="stack" style={{ gap: 4 }}>
+            <span className="muted" style={{ fontSize: 12 }}>Cọc đặt phòng online (%) — 0 = không thu cọc</span>
+            <input className="input" inputMode="numeric" value={depositPct} onChange={(e) => setDepositPct(e.target.value.replace(/[^0-9]/g, ""))} />
+          </label>
+
+          <div style={{ borderTop: "1px dashed var(--color-border)", paddingTop: "var(--space-3)" }}>
+            <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 6 }}>
+              🧾 Hóa đơn điện tử (theo hợp đồng của cơ sở)
+            </div>
+            <div className="stack" style={{ gap: "var(--space-3)" }}>
+              <label className="stack" style={{ gap: 4 }}>
+                <span className="muted" style={{ fontSize: 12 }}>Nhà cung cấp</span>
+                <select className="input" value={eiProvider} onChange={(e) => setEiProvider(e.target.value as typeof eiProvider)}>
+                  <option value="">— Chưa dùng HĐĐT —</option>
+                  <option value="viettel">Viettel SInvoice</option>
+                  <option value="vnpt">VNPT Invoice</option>
+                  <option value="misa">MISA meInvoice</option>
+                </select>
+              </label>
+              {eiProvider ? (
+                <>
+                  <label className="stack" style={{ gap: 4 }}>
+                    <span className="muted" style={{ fontSize: 12 }}>Mã số thuế đơn vị</span>
+                    <input className="input" value={eiTaxCode} onChange={(e) => setEiTaxCode(e.target.value.replace(/[^0-9-]/g, ""))} />
+                  </label>
+                  <div className="row" style={{ gap: 8 }}>
+                    <label className="stack" style={{ gap: 4, flex: 1 }}>
+                      <span className="muted" style={{ fontSize: 12 }}>Tài khoản API</span>
+                      <input className="input" value={eiUser} onChange={(e) => setEiUser(e.target.value)} />
+                    </label>
+                    <label className="stack" style={{ gap: 4, flex: 1 }}>
+                      <span className="muted" style={{ fontSize: 12 }}>Mật khẩu / khóa API</span>
+                      <input className="input" type="password" value={eiPass} onChange={(e) => setEiPass(e.target.value)} />
+                    </label>
+                  </div>
+                  <div className="row" style={{ gap: 8 }}>
+                    <label className="stack" style={{ gap: 4, flex: 1 }}>
+                      <span className="muted" style={{ fontSize: 12 }}>Mẫu số (VD: 1/001)</span>
+                      <input className="input" value={eiTemplate} onChange={(e) => setEiTemplate(e.target.value)} />
+                    </label>
+                    <label className="stack" style={{ gap: 4, flex: 1 }}>
+                      <span className="muted" style={{ fontSize: 12 }}>Ký hiệu (VD: C24TAA)</span>
+                      <input className="input" value={eiSerial} onChange={(e) => setEiSerial(e.target.value.toUpperCase())} />
+                    </label>
+                  </div>
+                  <div className="muted" style={{ fontSize: 12 }}>
+                    Thông số lưu theo từng cơ sở. Phát hành hóa đơn thật sẽ bật khi có hợp đồng
+                    với nhà cung cấp (cần tài khoản thật để kiểm thử).
+                  </div>
+                </>
+              ) : null}
+            </div>
+          </div>
           {error ? <div style={{ color: "var(--color-danger)", fontSize: 13 }}>{error}</div> : null}
           <button className="btn btn-primary" disabled={save.isPending} onClick={() => save.mutate()}>
             {save.isPending ? "Đang lưu…" : "Lưu cấu hình"}

@@ -10,7 +10,7 @@ import {
   pickActiveRatePlan,
   type RateOverride,
 } from "../lib/pricing";
-import { computeVat } from "../lib/billing";
+import { buildVietQrUrl, computeVat } from "../lib/billing";
 import { createRateLimiter } from "../lib/rate-limit";
 
 const publicApi = new Hono();
@@ -35,7 +35,9 @@ async function findProperty(code: string) {
   const db = getServerDb();
   const { data } = await db
     .from("properties")
-    .select("id, name, code, address, phone, vat_rate")
+    .select(
+      "id, name, code, address, phone, vat_rate, deposit_pct, bank_id, bank_account_no, bank_account_name",
+    )
     .eq("code", code.toUpperCase())
     .eq("is_active", true)
     .maybeSingle();
@@ -231,7 +233,27 @@ publicApi.post("/book", async (c) => {
     .single();
   if (error) return c.json({ success: false, error: error.message }, 400);
 
-  return c.json({ success: true, data }, 201);
+  // Yêu cầu cọc: chỉ khi cơ sở có cấu hình STK VietQR và deposit_pct > 0.
+  const depositPct = property.deposit_pct ?? 0;
+  const deposit =
+    depositPct > 0 && property.bank_id && property.bank_account_no
+      ? {
+          pct: depositPct,
+          amount: Math.round((offer.total * depositPct) / 100),
+          bank_id: property.bank_id,
+          bank_account_no: property.bank_account_no,
+          bank_account_name: property.bank_account_name ?? "",
+          qr_url: buildVietQrUrl({
+            bankId: property.bank_id,
+            accountNo: property.bank_account_no,
+            accountName: property.bank_account_name ?? "",
+            amount: Math.round((offer.total * depositPct) / 100),
+            memo: data.confirmation_code,
+          }),
+        }
+      : null;
+
+  return c.json({ success: true, data: { ...data, deposit } }, 201);
 });
 
 export default publicApi;

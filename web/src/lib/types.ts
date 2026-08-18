@@ -208,6 +208,13 @@ export interface Property {
   bank_id?: string | null;
   bank_account_no?: string | null;
   bank_account_name?: string | null;
+  deposit_pct?: number;
+  einvoice_provider?: "viettel" | "vnpt" | "misa" | null;
+  einvoice_tax_code?: string | null;
+  einvoice_username?: string | null;
+  einvoice_password?: string | null;
+  einvoice_template?: string | null;
+  einvoice_serial?: string | null;
 }
 
 export interface Voucher {
