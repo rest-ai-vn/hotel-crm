@@ -212,7 +212,7 @@ export interface Property {
   einvoice_provider?: "viettel" | "vnpt" | "misa" | null;
   einvoice_tax_code?: string | null;
   einvoice_username?: string | null;
-  einvoice_password?: string | null;
+  // einvoice_password chỉ ghi, API không bao giờ trả về → không có trong type.
   einvoice_template?: string | null;
   einvoice_serial?: string | null;
 }

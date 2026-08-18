@@ -293,7 +293,8 @@ function EditPropertyModal({
   const [eiProvider, setEiProvider] = useState(property.einvoice_provider ?? "");
   const [eiTaxCode, setEiTaxCode] = useState(property.einvoice_tax_code ?? "");
   const [eiUser, setEiUser] = useState(property.einvoice_username ?? "");
-  const [eiPass, setEiPass] = useState(property.einvoice_password ?? "");
+  // Mật khẩu HĐĐT không bao giờ đọc lại được từ API — để trống nghĩa là "giữ nguyên".
+  const [eiPass, setEiPass] = useState("");
   const [eiTemplate, setEiTemplate] = useState(property.einvoice_template ?? "");
   const [eiSerial, setEiSerial] = useState(property.einvoice_serial ?? "");
   const [error, setError] = useState<string | null>(null);
@@ -311,7 +312,7 @@ function EditPropertyModal({
           einvoice_provider: eiProvider || null,
           einvoice_tax_code: eiTaxCode || null,
           einvoice_username: eiUser || null,
-          einvoice_password: eiPass || null,
+          ...(eiPass ? { einvoice_password: eiPass } : {}),
           einvoice_template: eiTemplate || null,
           einvoice_serial: eiSerial || null,
         },
@@ -398,7 +399,7 @@ function EditPropertyModal({
                     </label>
                     <label className="stack" style={{ gap: 4, flex: 1 }}>
                       <span className="muted" style={{ fontSize: 12 }}>Mật khẩu / khóa API</span>
-                      <input className="input" type="password" value={eiPass} onChange={(e) => setEiPass(e.target.value)} />
+                      <input className="input" type="password" placeholder="Để trống = giữ nguyên" value={eiPass} onChange={(e) => setEiPass(e.target.value)} />
                     </label>
                   </div>
                   <div className="row" style={{ gap: 8 }}>

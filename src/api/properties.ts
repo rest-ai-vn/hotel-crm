@@ -27,12 +27,18 @@ const propertyUpdateSchema = propertyCreateSchema.partial().extend({
   is_active: z.boolean().optional(),
 });
 
+// einvoice_password KHÔNG BAO GIỜ trả ra API (chỉ ghi, không đọc) — nó là khóa
+// API của nhà cung cấp HĐĐT. Mọi response dùng danh sách cột tường minh này.
+const SAFE_COLUMNS =
+  "id, name, code, address, phone, is_active, created_at, vat_rate, bank_id, bank_account_no, bank_account_name, deposit_pct, einvoice_provider, einvoice_tax_code, einvoice_username, einvoice_template, einvoice_serial";
+
 properties.get("/", async (c) => {
   const db = getServerDb();
-  const { data, error } = await db
-    .from("properties")
-    .select("*")
-    .order("created_at", { ascending: true });
+  const user = c.get("user");
+  let query = db.from("properties").select(SAFE_COLUMNS).order("created_at", { ascending: true });
+  // Chỉ admin thấy toàn chuỗi; manager chỉ thấy cơ sở của mình.
+  if (user.role !== "admin") query = query.eq("id", user.property_id);
+  const { data, error } = await query;
   if (error) return c.json({ success: false, error: error.message }, 500);
   return c.json({ success: true, data });
 });
@@ -43,7 +49,11 @@ properties.post("/", async (c) => {
 
   const db = getServerDb();
   const user = c.get("user");
-  const { data, error } = await db.from("properties").insert(parsed.data).select().single();
+  const { data, error } = await db
+    .from("properties")
+    .insert(parsed.data)
+    .select(SAFE_COLUMNS)
+    .single();
   if (error) return c.json({ success: false, error: error.message }, 400);
 
   await logAudit(db, user, "property.create", "property", data.id, {
@@ -58,16 +68,27 @@ properties.put("/:id", async (c) => {
   if (!parsed.ok) return parsed.response;
 
   const id = c.req.param("id") ?? "";
+  const user = c.get("user");
+  // Manager chỉ được sửa cơ sở của chính mình; admin sửa được mọi cơ sở.
+  if (user.role !== "admin" && id !== user.property_id) {
+    return c.json({ success: false, error: "Không có quyền sửa cơ sở này" }, 403);
+  }
+
   const db = getServerDb();
   const { data, error } = await db
     .from("properties")
     .update(parsed.data)
     .eq("id", id)
-    .select()
+    .select(SAFE_COLUMNS)
     .single();
   if (error) return c.json({ success: false, error: error.message }, 400);
 
-  await logAudit(db, c.get("user"), "property.update", "property", id, parsed.data);
+  // Không ghi giá trị mật khẩu HĐĐT vào nhật ký — chỉ ghi nhận là có đổi.
+  const { einvoice_password, ...auditable } = parsed.data;
+  await logAudit(db, user, "property.update", "property", id, {
+    ...auditable,
+    ...(einvoice_password !== undefined ? { einvoice_password: "[đã đổi]" } : {}),
+  });
   return c.json({ success: true, data });
 });
 
