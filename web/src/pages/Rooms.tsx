@@ -40,6 +40,8 @@ export function Rooms() {
   const [typeFilter, setTypeFilter] = useState<string>("");
   const [search, setSearch] = useState("");
   const [picker, setPicker] = useState<Room | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [deleteNotice, setDeleteNotice] = useState<string | null>(null);
 
   const typesQuery = useQuery({
     queryKey: ["roomTypes"],
@@ -64,6 +66,26 @@ export function Rooms() {
       qc.invalidateQueries({ queryKey: ["rooms"] });
       qc.invalidateQueries({ queryKey: ["dashboard-summary"] });
     },
+  });
+
+  const removeRoom = useMutation({
+    mutationFn: (id: string) =>
+      apiFetch<{ number: string; mode: "deleted" | "archived"; past_reservations?: number }>(
+        `/api/rooms/${id}`,
+        { method: "DELETE" },
+      ),
+    onSuccess: (result) => {
+      setPicker(null);
+      setDeleteError(null);
+      setDeleteNotice(
+        result.mode === "archived"
+          ? `Phòng ${result.number} đã ngừng sử dụng (giữ lại ${result.past_reservations ?? 0} đặt phòng cũ để không mất lịch sử)`
+          : `Đã xóa phòng ${result.number}`,
+      );
+      qc.invalidateQueries({ queryKey: ["rooms"] });
+      qc.invalidateQueries({ queryKey: ["dashboard-summary"] });
+    },
+    onError: (e) => setDeleteError(e instanceof Error ? e.message : "Không xóa được phòng"),
   });
 
   const allRooms = roomsQuery.data ?? [];
@@ -96,6 +118,25 @@ export function Rooms() {
           </div>
         </div>
       </div>
+
+      {deleteNotice ? (
+        <div
+          className="card"
+          style={{
+            padding: "var(--space-3)",
+            borderLeft: "3px solid var(--color-accent)",
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            gap: "var(--space-3)",
+          }}
+        >
+          <span style={{ fontSize: 13 }}>✓ {deleteNotice}</span>
+          <button className="btn btn-ghost" onClick={() => setDeleteNotice(null)}>
+            ✕
+          </button>
+        </div>
+      ) : null}
 
       <div className="card" style={{ padding: "var(--space-3)" }}>
         <div className="row" style={{ flexWrap: "wrap", gap: "var(--space-2)" }}>
@@ -214,8 +255,15 @@ export function Rooms() {
         <StatusPickerModal
           room={picker}
           busy={updateStatus.isPending}
-          onClose={() => setPicker(null)}
+          canManage={canManage}
+          deleting={removeRoom.isPending}
+          deleteError={deleteError}
+          onClose={() => {
+            setPicker(null);
+            setDeleteError(null);
+          }}
           onPick={(status) => updateStatus.mutate({ id: picker.id, status })}
+          onDelete={() => removeRoom.mutate(picker.id)}
         />
       ) : null}
 
@@ -227,14 +275,24 @@ export function Rooms() {
 function StatusPickerModal({
   room,
   busy,
+  canManage,
+  deleting,
+  deleteError,
   onClose,
   onPick,
+  onDelete,
 }: {
   room: Room;
   busy: boolean;
+  canManage: boolean;
+  deleting: boolean;
+  deleteError: string | null;
   onClose: () => void;
   onPick: (status: RoomStatus) => void;
+  onDelete: () => void;
 }) {
+  const [confirming, setConfirming] = useState(false);
+
   return (
     <div
       onClick={onClose}
@@ -296,6 +354,60 @@ function StatusPickerModal({
             );
           })}
         </div>
+
+        {canManage ? (
+          <div
+            style={{
+              marginTop: "var(--space-3)",
+              paddingTop: "var(--space-3)",
+              borderTop: "1px solid var(--color-border)",
+            }}
+          >
+            {deleteError ? (
+              <div style={{ color: "var(--color-danger)", fontSize: 12, marginBottom: 8 }}>
+                {deleteError}
+              </div>
+            ) : null}
+
+            {confirming ? (
+              <div className="stack" style={{ gap: 8 }}>
+                <div style={{ fontSize: 12, lineHeight: 1.45 }}>
+                  Xóa phòng <strong>{room.number}</strong>? Phòng từng có khách ở sẽ được{" "}
+                  <em>ngừng sử dụng</em> thay vì xóa hẳn, để không mất hóa đơn và báo cáo cũ.
+                </div>
+                <div className="row" style={{ gap: 8 }}>
+                  <button
+                    className="btn btn-ghost"
+                    onClick={() => setConfirming(false)}
+                    disabled={deleting}
+                  >
+                    Không
+                  </button>
+                  <button
+                    className="btn"
+                    onClick={onDelete}
+                    disabled={deleting}
+                    style={{
+                      background: "var(--color-danger)",
+                      color: "white",
+                      fontWeight: 600,
+                    }}
+                  >
+                    {deleting ? "Đang xóa…" : "Xóa phòng"}
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <button
+                className="btn btn-ghost"
+                onClick={() => setConfirming(true)}
+                style={{ color: "var(--color-danger)", fontSize: 13, padding: "4px 8px" }}
+              >
+                🗑 Xóa phòng
+              </button>
+            )}
+          </div>
+        ) : null}
       </div>
     </div>
   );

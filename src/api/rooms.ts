@@ -8,6 +8,8 @@ import {
   roomTypeCreateSchema,
   roomTypeUpdateSchema,
 } from "../lib/schemas";
+import { requireRole } from "../middleware/auth";
+import { logAudit } from "../lib/audit";
 
 const rooms = new Hono();
 
@@ -133,6 +135,80 @@ rooms.patch("/:id/assign", async (c) => {
 
   if (error) return c.json({ success: false, error: error.message }, 400);
   return c.json({ success: true, data });
+});
+
+// Xóa phòng. Phòng đã từng có khách ở KHÔNG bị xóa cứng — chỉ ngừng sử dụng,
+// để hóa đơn, báo cáo và nhật ký cũ không mất tham chiếu.
+rooms.delete("/:id", requireRole("admin", "manager"), async (c) => {
+  const id = c.req.param("id") ?? "";
+  const user = c.get("user");
+  const db = await getTenantDb(user.property_id);
+
+  const { data: room } = await db
+    .from("rooms")
+    .select("id, number, status")
+    .eq("id", id)
+    .eq("property_id", user.property_id)
+    .eq("is_active", true)
+    .maybeSingle();
+  if (!room) return c.json({ success: false, error: "Không tìm thấy phòng" }, 404);
+
+  if (room.status === "occupied") {
+    return c.json(
+      { success: false, error: `Phòng ${room.number} đang có khách ở — trả phòng trước khi xóa` },
+      409,
+    );
+  }
+
+  const { count: holding } = await db
+    .from("reservations")
+    .select("id", { count: "exact", head: true })
+    .eq("property_id", user.property_id)
+    .eq("room_id", id)
+    .in("status", ["confirmed", "checked_in"]);
+  if ((holding ?? 0) > 0) {
+    return c.json(
+      {
+        success: false,
+        error: `Phòng ${room.number} còn ${holding} đặt phòng đang giữ chỗ — đổi phòng hoặc hủy trước khi xóa`,
+      },
+      409,
+    );
+  }
+
+  const { count: history } = await db
+    .from("reservations")
+    .select("id", { count: "exact", head: true })
+    .eq("property_id", user.property_id)
+    .eq("room_id", id);
+
+  if ((history ?? 0) > 0) {
+    const { error } = await db
+      .from("rooms")
+      .update({ is_active: false })
+      .eq("id", id)
+      .eq("property_id", user.property_id);
+    if (error) return c.json({ success: false, error: error.message }, 400);
+
+    await logAudit(db, user, "room.archive", "room", id, {
+      number: room.number,
+      past_reservations: history,
+    });
+    return c.json({
+      success: true,
+      data: { id, number: room.number, mode: "archived", past_reservations: history },
+    });
+  }
+
+  const { error } = await db
+    .from("rooms")
+    .delete()
+    .eq("id", id)
+    .eq("property_id", user.property_id);
+  if (error) return c.json({ success: false, error: error.message }, 400);
+
+  await logAudit(db, user, "room.delete", "room", id, { number: room.number });
+  return c.json({ success: true, data: { id, number: room.number, mode: "deleted" } });
 });
 
 export default rooms;
