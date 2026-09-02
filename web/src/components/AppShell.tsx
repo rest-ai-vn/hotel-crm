@@ -28,6 +28,7 @@ const NAV_ITEMS: NavItem[] = [
   { to: "/reports", label: "Báo cáo", icon: "📈", roles: ["admin", "manager"] },
   { to: "/rate-plans", label: "Bảng giá", icon: "💰", roles: ["admin", "manager"] },
   { to: "/audit-logs", label: "Nhật ký", icon: "📜", roles: ["admin", "manager"] },
+  { to: "/ai-integration", label: "Tích hợp AI", icon: "🤖", roles: ["admin", "manager"] },
 ];
 
 export function AppShell() {

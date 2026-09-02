@@ -17,6 +17,7 @@ import { NightAudit } from "./pages/NightAudit";
 import { AuditLogs } from "./pages/AuditLogs";
 import { Properties } from "./pages/Properties";
 import { BookingPublic } from "./pages/BookingPublic";
+import { AiIntegration } from "./pages/AiIntegration";
 
 export default function App() {
   return (
@@ -44,6 +45,7 @@ export default function App() {
         <Route path="/night-audit" element={<NightAudit />} />
         <Route path="/audit-logs" element={<AuditLogs />} />
         <Route path="/properties" element={<Properties />} />
+        <Route path="/ai-integration" element={<AiIntegration />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>
     </Routes>

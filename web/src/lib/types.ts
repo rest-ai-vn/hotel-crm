@@ -415,3 +415,19 @@ export interface ResidenceReport {
   date: string;
   rows: ResidenceRow[];
 }
+
+// ── Tích hợp AI (API key của cơ sở) ──
+export type AiScope = "read" | "book";
+
+export interface AiApiKey {
+  id: string;
+  name: string;
+  key_prefix: string;
+  scopes: AiScope[];
+  is_active: boolean;
+  last_used_at: string | null;
+  expires_at: string | null;
+  created_at: string;
+  /** Chỉ có trong response tạo mới — hiển thị một lần rồi biến mất. */
+  key?: string;
+}

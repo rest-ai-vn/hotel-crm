@@ -9,6 +9,7 @@
     "migrate": "bun src/db/migrate.ts",
     "seed": "bun src/db/seed.ts",
     "seed:demo": "bun scripts/seed-demo.ts",
+    "create:tenant": "bun scripts/create-tenant.ts",
     "typecheck": "bunx tsc --noEmit --pretty false",
     "dev:web": "bunx vite",
     "build:web": "bunx vite build",

@@ -355,5 +355,48 @@ export const cashTxnCreateSchema = z.object({
   reservation_id: uuid.optional(),
 });
 
+// ── API AI (tích hợp chatbot) ──
+// AI chỉ gửi ý định đặt phòng; giá và tồn phòng do máy chủ tính lại.
+export const aiBookSchema = z
+  .object({
+    room_type_id: uuid.optional(),
+    room_type_code: z.string().min(1).max(50).optional(),
+    booking_type: z.enum(["hourly", "overnight", "daytime"]).default("overnight"),
+    check_in: isoDate,
+    check_out: isoDate,
+    check_in_time: time24.optional(),
+    duration_hours: z.number().int().min(1).max(24).optional(),
+    rooms_count: z.number().int().min(1).max(10).default(1),
+    adults: z.number().int().min(1).max(20).default(1),
+    children: z.number().int().min(0).max(20).default(0),
+    guest_name: z.string().min(2).max(200),
+    guest_phone: phone,
+    guest_email: z.string().email().optional(),
+    zalo_id: z.string().max(100).optional(),
+    facebook_id: z.string().max(100).optional(),
+    source: z
+      .enum(["walk_in", "zalo", "facebook", "phone", "website"])
+      .default("website"),
+    note: z.string().max(1000).optional(),
+    idempotency_key: z.string().min(4).max(200).optional(),
+  })
+  .refine((d) => d.room_type_id || d.room_type_code, {
+    message: "Cần room_type_id hoặc room_type_code",
+    path: ["room_type_code"],
+  })
+  .refine((d) => d.check_out >= d.check_in, {
+    message: "Ngày trả phòng phải bằng hoặc sau ngày nhận",
+    path: ["check_out"],
+  })
+  .refine((d) => d.booking_type !== "overnight" || d.check_out > d.check_in, {
+    message: "Đặt qua đêm thì ngày trả phòng phải sau ngày nhận",
+    path: ["check_out"],
+  });
+
+export const aiCancelSchema = z.object({
+  guest_phone: phone,
+  reason: z.string().max(500).optional(),
+});
+
 export type GuestCreate = z.infer<typeof guestCreateSchema>;
 export type ReservationCreate = z.infer<typeof reservationCreateSchema>;

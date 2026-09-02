@@ -21,6 +21,8 @@ import companies from "./api/companies";
 import workOrders from "./api/work-orders";
 import publicApi from "./api/public";
 import lostFound from "./api/lost-found";
+import aiApi from "./api/ai";
+import aiIntegrations from "./api/ai-integrations";
 import { requireAuth, requireRole } from "./middleware/auth";
 
 const app = new Hono();
@@ -32,6 +34,8 @@ app.get("/health", (c) => c.json({ status: "ok", uptime: process.uptime() }));
 
 app.route("/api/auth", auth);
 app.route("/api/public", publicApi);
+// API cho trợ lý AI — xác thực bằng API key của cơ sở, không dùng JWT nhân viên.
+app.route("/api/ai", aiApi);
 
 const protectedApi = new Hono();
 protectedApi.use("*", requireAuth);
@@ -56,6 +60,7 @@ adminApi.route("/night-audit", nightAudit);
 adminApi.route("/audit-logs", auditLogs);
 adminApi.route("/properties", properties);
 adminApi.route("/vouchers", vouchers);
+adminApi.route("/ai-integrations", aiIntegrations);
 protectedApi.route("/", adminApi);
 
 app.route("/api", protectedApi);
