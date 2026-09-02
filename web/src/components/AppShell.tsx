@@ -58,7 +58,7 @@ export function AppShell() {
         }}
       >
         <div style={{ padding: "0 var(--space-3) var(--space-4)" }}>
-          <div style={{ fontSize: 18, fontWeight: 700, letterSpacing: "-0.01em" }}>Hotel CRM</div>
+          <div style={{ fontSize: 18, fontWeight: 700, letterSpacing: "-0.01em" }}>Hotel PMS</div>
           <PropertyBadge />
         </div>
         <nav style={{ display: "flex", flexDirection: "column", gap: 2 }}>

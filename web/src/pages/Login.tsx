@@ -162,7 +162,7 @@ export function Login() {
           <div className="auth-brand-logo">
             <div className="auth-logo-chip">🏨</div>
             <div>
-              <p className="auth-brand-name">Hotel CRM</p>
+              <p className="auth-brand-name">Hotel PMS</p>
               <p className="auth-brand-sub">Quản lý khách sạn</p>
             </div>
           </div>
@@ -189,7 +189,7 @@ export function Login() {
           <div className="auth-crown">
             <div className="auth-crown-chip">🏨</div>
             <h1 className="auth-title">Đăng nhập</h1>
-            <p className="auth-subtitle">Cổng quản trị · Hotel CRM</p>
+            <p className="auth-subtitle">Cổng quản trị · Hotel PMS</p>
           </div>
 
           <div className="auth-glass">

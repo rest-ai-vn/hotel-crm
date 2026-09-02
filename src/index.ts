@@ -66,7 +66,7 @@ protectedApi.route("/", adminApi);
 app.route("/api", protectedApi);
 
 // Serve frontend (Bun HTML imports)
-app.get("/", (c) => c.html("<!DOCTYPE html><html><body><h1>Hotel CRM</h1><p>Dashboard coming soon</p></body></html>"));
+app.get("/", (c) => c.html("<!DOCTYPE html><html><body><h1>Hotel PMS</h1><p>Dashboard coming soon</p></body></html>"));
 
 const PORT = Number(process.env.PORT) || 3000;
 
@@ -75,4 +75,4 @@ export default {
   fetch: app.fetch,
 };
 
-console.log(`Hotel CRM running on http://localhost:${PORT}`);
+console.log(`Hotel PMS running on http://localhost:${PORT}`);

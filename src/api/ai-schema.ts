@@ -215,7 +215,7 @@ export function openApiDocument(baseUrl: string): Record<string, unknown> {
   return {
     openapi: "3.1.0",
     info: {
-      title: "Hotel CRM — AI Integration API",
+      title: "Hotel PMS — AI Integration API",
       version: "1.0.0",
       description:
         "API tra cứu phòng trống và đặt phòng dành cho trợ lý AI (chatbot Zalo/Facebook, tổng đài AI). " +

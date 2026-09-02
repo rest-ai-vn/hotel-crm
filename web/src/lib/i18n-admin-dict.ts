@@ -74,7 +74,7 @@ export const ADMIN_DICT: Record<string, string> = {
   "Còn nợ": "Outstanding",
   "Cộng": "Subtotal",
   "Công nợ công ty": "Company receivables",
-  "Cổng quản trị · Hotel CRM": "Admin portal · Hotel CRM",
+  "Cổng quản trị · Hotel PMS": "Admin portal · Hotel PMS",
   "Công suất": "Occupancy",
   "Công ty": "Company",
   "Công ty (công nợ)": "Company (on account)",

@@ -3,7 +3,7 @@
 // any environment — everything lands in its own tenant).
 //
 // Usage:
-//   SEED_BASE_URL=https://hotel-crm.restai.vn \
+//   SEED_BASE_URL=https://hotel-pms.restai.vn \
 //   SEED_ROOT_EMAIL=admin@hotel.local SEED_ROOT_PASSWORD=... \
 //   bun run seed:demo
 

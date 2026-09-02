@@ -1,6 +1,6 @@
 # API cho trợ lý AI
 
-API để chatbot / tổng đài AI **tra phòng trống** và **đặt phòng** trực tiếp vào Hotel CRM.
+API để chatbot / tổng đài AI **tra phòng trống** và **đặt phòng** trực tiếp vào Hotel PMS.
 
 Mọi endpoint nằm dưới `/api/ai`, xác thực bằng **API key của từng cơ sở** (không dùng tài khoản
 nhân viên). Giá và tồn phòng luôn được máy chủ tính lại — AI không thể tự bịa giá hay đặt vượt số
