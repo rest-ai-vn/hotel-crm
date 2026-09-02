@@ -3,7 +3,7 @@
 // khách sạn + (tùy chọn) API key cho trợ lý AI. Chạy được với mọi môi trường.
 //
 // Cách dùng:
-//   BASE_URL=https://hotel-crm.example \
+//   BASE_URL=https://hotel-pms.example \
 //   ROOT_EMAIL=admin@example.local ROOT_PASSWORD=... \
 //   TENANT_NAME="Khách sạn Mẫu" TENANT_CODE=SAMPLE \
 //   TENANT_EMAIL=owner@example.com TENANT_PASSWORD=... \

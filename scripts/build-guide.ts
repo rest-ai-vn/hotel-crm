@@ -6,6 +6,10 @@
 // cũng chạy, không phụ thuộc đường dẫn ảnh trên máy chủ.
 //
 // Chạy: bun run docs:guide
+//
+// Deploy: chép dist/guide/index.html tới /opt/hotel-crm/public/huong-dan/index.html
+// trên máy chủ — nginx phục vụ công khai tại https://hotel-pms.restai.vn/huong-dan
+// (thư mục này nằm NGOÀI dist/web nên deploy app không xóa mất).
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";

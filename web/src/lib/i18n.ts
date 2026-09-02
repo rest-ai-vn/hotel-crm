@@ -1,5 +1,5 @@
 // Lightweight VI/EN dictionary for guest-facing pages (public booking).
-// Staff-facing CRM stays Vietnamese by design.
+// Staff-facing PMS stays Vietnamese by design.
 import { useState } from "react";
 
 export type Lang = "vi" | "en";

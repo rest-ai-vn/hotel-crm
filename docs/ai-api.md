@@ -10,7 +10,7 @@ phòng thực có.
 
 ## 1. Lấy API key
 
-Đăng nhập CRM → **Tích hợp AI** (menu bên trái, dành cho admin/manager) → *Tạo API key mới*.
+Đăng nhập Hotel PMS → **Tích hợp AI** (menu bên trái, dành cho admin/manager) → *Tạo API key mới*.
 
 | Quyền (scope) | Cho phép |
 | --- | --- |
@@ -22,7 +22,7 @@ Chuỗi key dạng `hk_…` **chỉ hiện một lần**. Mất thì khóa key c
 Có thể tạo bằng dòng lệnh khi khởi tạo cơ sở:
 
 ```bash
-BASE_URL=https://hotel-crm.example \
+BASE_URL=https://hotel-pms.example \
 ROOT_EMAIL=admin@example.local ROOT_PASSWORD=... \
 TENANT_NAME="Khách sạn Mẫu" TENANT_CODE=SAMPLE \
 TENANT_EMAIL=owner@example.com TENANT_PASSWORD=... \
@@ -69,7 +69,7 @@ Gọi một lần đầu hội thoại để AI biết khách sạn có gì.
 
 ```bash
 curl -H "X-API-Key: hk_..." \
-  "https://hotel-crm.example/api/ai/availability?check_in=2026-09-10&check_out=2026-09-12"
+  "https://hotel-pms.example/api/ai/availability?check_in=2026-09-10&check_out=2026-09-12"
 ```
 
 ```jsonc
@@ -129,7 +129,7 @@ curl -X POST -H "X-API-Key: hk_..." -H "Content-Type: application/json" \
     "note": "Đến muộn khoảng 22h",
     "idempotency_key": "zalo-msg-123456"
   }' \
-  "https://hotel-crm.example/api/ai/bookings"
+  "https://hotel-pms.example/api/ai/bookings"
 ```
 
 Trả `201` kèm mã xác nhận và thông tin cọc:
