@@ -9,6 +9,8 @@
 //   TENANT_EMAIL=owner@example.com TENANT_PASSWORD=... \
 //   bun run scripts/create-tenant.ts
 //
+// Tài khoản chủ cơ sở mặc định role `manager` (chỉ trong cơ sở của mình).
+//
 // Script không in mật khẩu ra màn hình; API key chỉ in đúng một lần vì
 // máy chủ cũng chỉ trả về một lần.
 
@@ -20,6 +22,10 @@ const TENANT_CODE = (process.env.TENANT_CODE ?? "").toUpperCase();
 const TENANT_EMAIL = process.env.TENANT_EMAIL ?? "";
 const TENANT_PASSWORD = process.env.TENANT_PASSWORD ?? "";
 const TENANT_STAFF_NAME = process.env.TENANT_STAFF_NAME ?? "Chủ khách sạn";
+// `manager` = chủ MỘT cơ sở. KHÔNG đặt `admin` cho chủ khách sạn: trong hệ thống
+// này `admin` là quyền toàn nền tảng (thấy và thao tác được mọi cơ sở khác) —
+// xem properties.get("/") và auth.post("/switch-property").
+const TENANT_ROLE = process.env.TENANT_ROLE ?? "manager";
 const ADDRESS = process.env.TENANT_ADDRESS ?? "";
 const PHONE = process.env.TENANT_PHONE ?? "";
 const VAT_RATE = Number(process.env.VAT_RATE ?? 0);
@@ -146,6 +152,9 @@ function requireEnv(): void {
   if (TENANT_PASSWORD.length < 8) {
     throw new Error("TENANT_PASSWORD tối thiểu 8 ký tự");
   }
+  if (!["admin", "manager", "receptionist", "housekeeping"].includes(TENANT_ROLE)) {
+    throw new Error(`TENANT_ROLE không hợp lệ: ${TENANT_ROLE}`);
+  }
 }
 
 async function main(): Promise<void> {
@@ -188,10 +197,13 @@ async function main(): Promise<void> {
     name: TENANT_STAFF_NAME,
     email: TENANT_EMAIL,
     password: TENANT_PASSWORD,
-    role: "admin",
+    role: TENANT_ROLE,
     property_id: property.id,
   });
-  console.log(`✓ tài khoản quản trị ${TENANT_EMAIL} (role admin)`);
+  console.log(`✓ tài khoản chủ cơ sở ${TENANT_EMAIL} (role ${TENANT_ROLE})`);
+  if (TENANT_ROLE === "admin") {
+    console.log("  ⚠ role admin thấy và thao tác được MỌI cơ sở trên hệ thống");
+  }
 
   const { data: tenantSession } = await call<{ token: string }>(
     "POST",

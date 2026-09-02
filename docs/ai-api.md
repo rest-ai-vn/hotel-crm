@@ -29,6 +29,10 @@ TENANT_EMAIL=owner@example.com TENANT_PASSWORD=... \
 bun run create:tenant
 ```
 
+Tài khoản chủ cơ sở được tạo với role `manager` — chỉ thao tác trong cơ sở của mình.
+**Không đặt `TENANT_ROLE=admin`** cho chủ khách sạn: `admin` là quyền toàn nền tảng,
+thấy và thao tác được mọi cơ sở khác.
+
 ## 2. Xác thực
 
 ```
