@@ -16,9 +16,11 @@ import {
   daysBetweenIso,
   isIsoDate,
   loadAvailability,
+  loadCalendar,
   type RoomTypeAvailability,
 } from "../lib/availability";
 import { buildVietQrUrl } from "../lib/billing";
+import { logActorAudit } from "../lib/audit";
 import { openApiDocument, toolDefinitions } from "./ai-schema";
 import type { BookingType } from "../lib/pricing";
 
@@ -196,29 +198,13 @@ ai.get("/calendar", requireApiKey("read"), async (c) => {
     return fail(c, 404, "Không tìm thấy loại phòng", "room_type_not_found");
   }
 
-  const perDay = await Promise.all(
-    Array.from({ length: span + 1 }, (_, i) => addDaysIso(from, i)).map(async (date) => {
-      const types = await loadAvailability(db, property_id, property.vat_rate ?? 0, {
-        check_in: date,
-        check_out: addDaysIso(date, 1),
-        booking_type: "overnight",
-        room_type_id: roomTypeId ?? undefined,
-      });
-      return {
-        date,
-        total_rooms: types.reduce((s, t) => s + t.total_rooms, 0),
-        available_rooms: types.reduce((s, t) => s + t.available_rooms, 0),
-        by_room_type: types.map((t) => ({
-          code: t.code,
-          name: t.name,
-          available_rooms: t.available_rooms,
-          total_amount: t.price?.total_amount ?? null,
-        })),
-      };
-    }),
-  );
+  const days = await loadCalendar(db, property_id, property.vat_rate ?? 0, {
+    from,
+    to,
+    room_type_id: roomTypeId ?? undefined,
+  });
 
-  return c.json({ success: true, data: { from, to, days: perDay } });
+  return c.json({ success: true, data: { from, to, days } });
 });
 
 // ── Đặt phòng ──
@@ -243,7 +229,7 @@ ai.post("/bookings", requireApiKey("book"), async (c) => {
       .eq("property_id", propertyId)
       .eq("key", input.idempotency_key)
       .maybeSingle();
-    if (prior?.response) {
+    if (prior?.response && !prior.response.pending) {
       return c.json({ success: true, data: { ...prior.response, replayed: true } });
     }
   }
@@ -300,6 +286,29 @@ ai.post("/bookings", requireApiKey("book"), async (c) => {
   // Gán ra biến để TypeScript giữ được thu hẹp kiểu bên trong closure bên dưới.
   const price = offer.price;
 
+  // Giữ chỗ idempotency TRƯỚC khi ghi đặt phòng: khóa chính (property_id, key)
+  // là trọng tài, nên hai request song song cùng key không thể tạo hai booking.
+  if (input.idempotency_key) {
+    const { error: claimErr } = await db.from("api_idempotency").insert({
+      property_id: propertyId,
+      key: input.idempotency_key,
+      endpoint: "POST /api/ai/bookings",
+      response: { pending: true },
+    });
+    if (claimErr) {
+      const { data: winner } = await db
+        .from("api_idempotency")
+        .select("response")
+        .eq("property_id", propertyId)
+        .eq("key", input.idempotency_key)
+        .maybeSingle();
+      if (winner?.response && !winner.response.pending) {
+        return c.json({ success: true, data: { ...winner.response, replayed: true } });
+      }
+      return fail(c, 409, "Yêu cầu cùng idempotency_key đang được xử lý", "idempotency_in_flight");
+    }
+  }
+
   const groupCode =
     input.rooms_count > 1 ? `GRP-${Date.now().toString(36).toUpperCase().slice(-6)}` : null;
   const rows = Array.from({ length: input.rooms_count }, () => ({
@@ -324,7 +333,12 @@ ai.post("/bookings", requireApiKey("book"), async (c) => {
   }));
 
   const { data: created, error } = await db.from("reservations").insert(rows).select();
-  if (error) return fail(c, 409, error.message, "booking_failed");
+  if (error) {
+    if (input.idempotency_key) {
+      await releaseClaim(db, propertyId, input.idempotency_key);
+    }
+    return fail(c, 409, error.message, "booking_failed");
+  }
 
   const first = created?.[0];
   const grandTotal = price.total_amount * input.rooms_count;
@@ -344,19 +358,19 @@ ai.post("/bookings", requireApiKey("book"), async (c) => {
   };
 
   if (input.idempotency_key) {
-    await db.from("api_idempotency").insert({
-      property_id: propertyId,
-      key: input.idempotency_key,
-      endpoint: "POST /api/ai/bookings",
-      response,
-    });
+    await db
+      .from("api_idempotency")
+      .update({ response })
+      .eq("property_id", propertyId)
+      .eq("key", input.idempotency_key);
   }
 
-  await logApiAudit(db, apiKey, "ai.booking.create", first?.id ?? null, {
+  await logActorAudit(db, apiActor(apiKey), "ai.booking.create", "reservation", first?.id ?? null, {
     confirmation_code: response.confirmation_code,
     rooms_count: input.rooms_count,
     total_amount: grandTotal,
     source: input.source,
+    api_key_id: apiKey.id,
   });
 
   return c.json({ success: true, data: response }, 201);
@@ -427,14 +441,28 @@ ai.post("/bookings/:code/cancel", requireApiKey("book"), async (c) => {
 
   if (error) return fail(c, 400, error.message, "cancel_failed");
 
-  await logApiAudit(db, apiKey, "ai.booking.cancel", booking.id, {
+  await logActorAudit(db, apiActor(apiKey), "ai.booking.cancel", "reservation", booking.id, {
     confirmation_code: code,
     reason: parsed.data.reason ?? null,
+    api_key_id: apiKey.id,
   });
   return c.json({ success: true, data });
 });
 
 // ── Helpers ──
+
+async function releaseClaim(db: SupabaseClient, propertyId: string, key: string): Promise<void> {
+  await db.from("api_idempotency").delete().eq("property_id", propertyId).eq("key", key);
+}
+
+/** API key đóng vai \"nhân viên\" trong nhật ký, nhưng không có staff_id. */
+function apiActor(apiKey: ApiKeyContext) {
+  return {
+    staff_id: null,
+    staff_name: `API: ${apiKey.name}`,
+    property_id: apiKey.property_id,
+  };
+}
 
 /** `undefined` = không lọc, id = tìm thấy, `null` = mã/id không tồn tại. */
 async function resolveRoomTypeId(
@@ -555,29 +583,6 @@ function buildDeposit(
       memo,
     }),
   };
-}
-
-/** Nhật ký cho hành động do API key thực hiện (không gắn nhân viên nào). */
-async function logApiAudit(
-  db: SupabaseClient,
-  apiKey: ApiKeyContext,
-  action: string,
-  entityId: string | null,
-  details: Record<string, unknown>,
-): Promise<void> {
-  try {
-    await db.from("audit_logs").insert({
-      staff_id: null,
-      staff_name: `API: ${apiKey.name}`,
-      property_id: apiKey.property_id,
-      action,
-      entity: "reservation",
-      entity_id: entityId,
-      details: { ...details, api_key_id: apiKey.id },
-    });
-  } catch {
-    /* nhật ký không được phép làm hỏng nghiệp vụ chính */
-  }
 }
 
 export default ai;
