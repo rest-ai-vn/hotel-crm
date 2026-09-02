@@ -57,18 +57,26 @@ async function loadProperty(propertyId: string) {
   return data;
 }
 
-// ── Khám phá hợp đồng API (công khai, không chứa dữ liệu tenant) ──
-ai.get("/openapi.json", (c) => {
+/**
+ * URL gốc công khai. Sau reverse proxy, c.req.url mang scheme nội bộ (http),
+ * nên phải tin X-Forwarded-Proto/Host — nếu không AI sẽ được chỉ sang http://.
+ */
+function publicOrigin(c: Context): string {
   const url = new URL(c.req.url);
-  return c.json(openApiDocument(`${url.protocol}//${url.host}`));
-});
+  const proto = c.req.header("x-forwarded-proto")?.split(",")[0]?.trim() || url.protocol.replace(":", "");
+  const host = c.req.header("x-forwarded-host")?.split(",")[0]?.trim() || c.req.header("host") || url.host;
+  return `${proto}://${host}`;
+}
+
+// ── Khám phá hợp đồng API (công khai, không chứa dữ liệu tenant) ──
+ai.get("/openapi.json", (c) => c.json(openApiDocument(publicOrigin(c))));
 
 ai.get("/tools.json", (c) =>
   c.json({
     success: true,
     data: {
       auth: { type: "api_key", header: "X-API-Key" },
-      base_url: `${new URL(c.req.url).origin}/api/ai`,
+      base_url: `${publicOrigin(c)}/api/ai`,
       tools: toolDefinitions(),
     },
   }),
