@@ -66,13 +66,13 @@ const CHAPTERS: Chapter[] = [
     id: "dang-nhap",
     kicker: "Bắt đầu",
     title: "Đăng nhập",
-    lede: "Mỗi người một tài khoản riêng. Không dùng chung — mọi thao tác đều ghi tên người làm vào Nhật ký.",
+    lede: "Mỗi người một tài khoản riêng, không dùng chung — để mỗi thao tác gắn đúng với người thực hiện.",
     blocks: [
       shot("01-login", "Màn hình đăng nhập Hotel PMS", `Cổng quản trị tại <code>${HOST}</code>.`, "/login"),
       `<ol class="steps">
   <li>Mở <b>${HOST}</b> trên trình duyệt.</li>
   <li>Nhập <b>email</b> và <b>mật khẩu</b> khách sạn đã cấp cho bạn.</li>
-  <li>Bấm <b>Đăng nhập</b>. Vào xong, đổi mật khẩu ngay ở nút <b>🔑 Đổi mật khẩu</b> góc dưới trái.</li>
+  <li>Bấm <b>Đăng nhập</b>. Vào xong, đổi mật khẩu ngay ở nút <b>Đổi mật khẩu</b> góc dưới trái.</li>
 </ol>
 <div class="note stop">
   <p class="note-t">Sai mật khẩu 5 lần</p>
@@ -374,7 +374,7 @@ curl -X POST -H "X-API-Key: hk_..." -H "Content-Type: application/json" \\
   <thead><tr><th>Vai trò</th><th>Thấy được</th></tr></thead>
   <tbody>
     <tr><td><b>Quản trị</b><br><span class="dim">admin</span></td><td>Toàn bộ nền tảng — <b>mọi khách sạn</b>, không riêng cơ sở của mình. Chỉ dành cho người vận hành hệ thống.</td></tr>
-    <tr><td><b>Quản lý</b><br><span class="dim">manager</span></td><td>Trọn vẹn <b>một cơ sở</b>: vận hành, bảng giá, chốt ngày, báo cáo, nhật ký, tích hợp AI.</td></tr>
+    <tr><td><b>Quản lý</b><br><span class="dim">manager</span></td><td>Trọn vẹn <b>một cơ sở</b>: vận hành, bảng giá, chốt ngày, báo cáo, tích hợp AI.</td></tr>
     <tr><td><b>Lễ tân</b><br><span class="dim">receptionist</span></td><td>Vận hành hằng ngày: phòng, đặt phòng, khách, dịch vụ, thu chi, giao ca. Không vào bảng giá, chốt ngày, báo cáo.</td></tr>
     <tr><td><b>Buồng phòng</b><br><span class="dim">housekeeping</span></td><td>Chỉ trang Buồng phòng.</td></tr>
   </tbody>
@@ -400,7 +400,6 @@ curl -X POST -H "X-API-Key: hk_..." -H "Content-Type: application/json" \\
   <li>Ngày trả phòng <b>không</b> tính là ngày bận — bán lại được ngay.</li>
   <li>Loại phòng không có <b>phòng thực tế</b> thì luôn báo hết, dù đã có bảng giá.</li>
   <li>Mã đặt phòng có dạng <code>BON-260910-A1B</code> — đọc cho khách là mã này.</li>
-  <li>Mọi thao tác đều vào <b>Nhật ký</b>, kể cả việc do trợ lý AI làm (ghi tên key).</li>
 </ul>`,
     ],
   },
