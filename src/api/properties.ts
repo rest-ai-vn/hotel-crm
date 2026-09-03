@@ -3,6 +3,7 @@ import { z } from "zod";
 import { getServerDb } from "../db/supabase-client";
 import { parseBody } from "../lib/validate";
 import { logAudit } from "../lib/audit";
+import { EncryptionKeyMissing, encryptSecret } from "../lib/crypto";
 
 const properties = new Hono();
 
@@ -32,6 +33,25 @@ const propertyUpdateSchema = propertyCreateSchema.partial().extend({
 const SAFE_COLUMNS =
   "id, name, code, address, phone, is_active, created_at, vat_rate, bank_id, bank_account_no, bank_account_name, deposit_pct, einvoice_provider, einvoice_tax_code, einvoice_username, einvoice_template, einvoice_serial";
 
+/**
+ * Mật khẩu API hóa đơn của cơ sở KHÔNG BAO GIỜ được ghi thẳng xuống CSDL — nó là
+ * khóa phát hành hóa đơn dưới danh nghĩa công ty khách hàng. Thiếu khóa mã hóa
+ * thì từ chối lưu, chứ không âm thầm ghi plaintext.
+ */
+function withEncryptedSecrets<T extends { einvoice_password?: string | null }>(
+  data: T,
+): { ok: true; data: T } | { ok: false; error: string } {
+  if (data.einvoice_password === undefined || data.einvoice_password === null) {
+    return { ok: true, data };
+  }
+  try {
+    return { ok: true, data: { ...data, einvoice_password: encryptSecret(data.einvoice_password) } };
+  } catch (e) {
+    if (e instanceof EncryptionKeyMissing) return { ok: false, error: e.message };
+    throw e;
+  }
+}
+
 properties.get("/", async (c) => {
   const db = getServerDb();
   const user = c.get("user");
@@ -47,11 +67,14 @@ properties.post("/", async (c) => {
   const parsed = await parseBody(c, propertyCreateSchema);
   if (!parsed.ok) return parsed.response;
 
+  const secured = withEncryptedSecrets(parsed.data);
+  if (!secured.ok) return c.json({ success: false, error: secured.error }, 500);
+
   const db = getServerDb();
   const user = c.get("user");
   const { data, error } = await db
     .from("properties")
-    .insert(parsed.data)
+    .insert(secured.data)
     .select(SAFE_COLUMNS)
     .single();
   if (error) return c.json({ success: false, error: error.message }, 400);
@@ -74,10 +97,13 @@ properties.put("/:id", async (c) => {
     return c.json({ success: false, error: "Không có quyền sửa cơ sở này" }, 403);
   }
 
+  const secured = withEncryptedSecrets(parsed.data);
+  if (!secured.ok) return c.json({ success: false, error: secured.error }, 500);
+
   const db = getServerDb();
   const { data, error } = await db
     .from("properties")
-    .update(parsed.data)
+    .update(secured.data)
     .eq("id", id)
     .select(SAFE_COLUMNS)
     .single();
