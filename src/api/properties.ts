@@ -47,7 +47,13 @@ function withEncryptedSecrets<T extends { einvoice_password?: string | null }>(
   try {
     return { ok: true, data: { ...data, einvoice_password: encryptSecret(data.einvoice_password) } };
   } catch (e) {
-    if (e instanceof EncryptionKeyMissing) return { ok: false, error: e.message };
+    if (e instanceof EncryptionKeyMissing) {
+      // Lỗi cấu hình máy chủ, không phải lỗi người dùng — phải hiện trong log
+      // dịch vụ, nếu không người vận hành chỉ thấy 500 trên giao diện mà không
+      // biết vì sao.
+      console.error("[properties] không lưu được mật khẩu HĐĐT:", e.message);
+      return { ok: false, error: e.message };
+    }
     throw e;
   }
 }
